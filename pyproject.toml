@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "analogdemo"
+version = "0.1.0"
+description = "Local CIFAR-10 experiments illustrating analog inference errors"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "torch>=2.6",
+  "torchvision>=0.21",
+  "numpy>=2.0",
+  "matplotlib>=3.9",
+  "pillow>=11",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.11"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/analogdemo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

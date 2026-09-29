@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--BEGIN PAGE-->
+<title>Analog Noise Codesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Open+Sans:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<style>
+/* Layout: one 16:9 screen, no scrolling. Levers on the left; the consequence in the
+   middle (numbers, curve, 500-image field); six pictures up close on the right.
+   Single light theme on purpose: CMU core colors on white, identical on any presenter laptop. */
+:root {
+  color-scheme: light;
+  /* CMU core colors */
+  --carnegie-red: #C41230;
+  --black: #000000;
+  --iron-gray: #6D6E71;
+  --steel-gray: #E0E0E0;
+  --white: #FFFFFF;
+  /* Tartan threads: the only low-to-high scale, blue (low) to gold (high) */
+  --blue-thread: #043673;
+  --teal-thread: #008F91;
+  --green-thread: #009647;
+  --gold-thread: #FDB515;
+
+  --bg: var(--white);
+  --ink: var(--black);
+  --ink-2: var(--iron-gray);
+  --rule: var(--steel-gray);
+  --panel: #F4F4F4;            /* Steel Gray, lightened for fills */
+  --ghost: #C4C5C7;            /* between Steel and Iron, for context lines */
+  --sgd: var(--black);
+  --sam: var(--carnegie-red);
+
+  --display: "Source Serif 4", "Source Serif Pro", Georgia, "Times New Roman", serif;
+  --sans: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+/* 1rem = 20px on a 1920×1080 screen, scales with both width and height. */
+html { height: 100%; font-size: clamp(13px, min(1.04vw, 1.85vh), 44px); }
+body {
+  margin: 0; height: 100%; overflow: hidden;
+  border-top: .4rem solid var(--carnegie-red);
+  background: var(--bg); color: var(--ink);
+  font-family: var(--sans); font-size: 1rem; line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible { outline: .14rem solid var(--ink); outline-offset: .14rem; }
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 19.5rem minmax(0, 1fr) 23rem;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: 1.8rem; row-gap: .9rem;
+  padding-inline: 1.5rem; padding-block: .8rem .6rem;
+}
+
+/* Header */
+.top {
+  grid-column: 1 / -1;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 2.5rem;
+  padding-bottom: .75rem; border-bottom: 1px solid var(--rule);
+}
+.eyebrow {
+  margin: 0 0 .35rem; font: 700 .7rem/1.2 var(--sans);
+  letter-spacing: .13em; text-transform: uppercase; color: var(--carnegie-red);
+}
+h1 { margin: 0; font: 600 2.2rem/1.05 var(--display); letter-spacing: -.012em; text-wrap: balance; }
+.lede { margin: 0; max-width: 41rem; font-size: .92rem; color: var(--ink-2); text-wrap: pretty; }
+
+/* Shared type */
+.label {
+  margin: 0; display: flex; align-items: center; justify-content: space-between;
+  font: 700 .7rem/1 var(--sans); letter-spacing: .11em; text-transform: uppercase;
+}
+kbd {
+  font: 500 .62rem/1 var(--mono); letter-spacing: 0; color: var(--ink-2);
+  border: 1px solid var(--rule); border-radius: .2rem; padding: .16rem .32rem;
+}
+.note { margin: 0; font-size: .74rem; line-height: 1.35; color: var(--ink-2); }
+.mono { font-family: var(--mono); }
+
+/* Controls */
+.controls { display: flex; flex-direction: column; gap: 1.15rem; min-height: 0; }
+.group { display: flex; flex-direction: column; gap: .45rem; }
+.mech { display: flex; flex-direction: column; gap: .4rem; }
+.mech button {
+  display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); column-gap: .75rem; align-items: center;
+  text-align: left; padding: .5rem .65rem; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--rule); border-radius: .3rem;
+  transition: border-color .2s, background-color .2s;
+}
+.mech button:hover { border-color: var(--ink-2); }
+.mech button[aria-checked="true"] { background: var(--panel); border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.mech canvas { grid-row: 1 / 3; width: 2.6rem; height: 2.6rem; image-rendering: pixelated; display: block; }
+.mname { font-weight: 700; font-size: .92rem; }
+.mdesc { font-size: .74rem; line-height: 1.3; color: var(--ink-2); }
+
+.net { display: block; width: 100%; height: auto; }
+.net .blk { fill: var(--bg); stroke: var(--ink-2); stroke-width: .5; transition: fill .3s; cursor: pointer; }
+.net .blk.on { fill: var(--ink); stroke: var(--ink); }
+.net .wire { stroke: var(--ghost); stroke-width: .6; }
+.net text { font-family: var(--mono); font-size: 4px; fill: var(--ink-2); }
+.net image { image-rendering: pixelated; }
+
+.seg {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--ink); border-radius: .3rem; overflow: hidden;
+}
+.seg button {
+  padding: .58rem .15rem; border: 0; border-left: 1px solid var(--rule); cursor: pointer;
+  background: var(--bg); font-weight: 600; font-size: .84rem; font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; justify-content: center; gap: .4rem;
+  transition: background-color .2s, color .2s;
+}
+.seg button:first-child { border-left: 0; }
+.seg button:hover:not(:disabled) { background: var(--panel); }
+.seg button[aria-checked="true"] { background: var(--ink); color: var(--white); }
+.seg button[data-model="sam"][aria-checked="true"] { background: var(--sam); }
+.seg button:disabled { color: var(--ghost); background: var(--panel); cursor: not-allowed; }
+.train button { font-size: .95rem; padding-block: .7rem; }
+
+.sw { display: inline-block; width: .62rem; height: .62rem; flex: none; background: currentColor; }
+.sw.sgd { border-radius: 50%; }
+.stat .sw.sgd { color: var(--sgd); }
+.stat .sw.sam { color: var(--sam); }
+.seg .sw { color: var(--sgd); }
+.seg [data-model="sam"] .sw { color: var(--sam); }
+.seg [aria-checked="true"] .sw { color: var(--white); }
+
+/* Center */
+.center { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: .75rem; min-width: 0; min-height: 0; }
+.condition { margin: 0; font: 600 1.35rem/1.2 var(--display); text-wrap: balance; }
+.condition .amp { color: var(--ink-2); font-weight: 500; }
+.stats { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 1.5rem; }
+.stat { border-top: .24rem solid var(--rule); padding-top: .5rem; transition: border-color .3s; min-width: 0; }
+.stat.is-selected[data-model="sgd"] { border-top-color: var(--sgd); }
+.stat.is-selected[data-model="sam"] { border-top-color: var(--sam); }
+.sname { display: flex; align-items: center; gap: .45rem; font: 700 .7rem/1 var(--sans); letter-spacing: .11em; text-transform: uppercase; }
+.big { margin: .3rem 0 .2rem; font: 600 3.2rem/1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums lining-nums; }
+.big small { font-size: .42em; font-weight: 500; color: var(--ink-2); margin-left: .12em; letter-spacing: 0; }
+.sub { font-size: .78rem; color: var(--ink-2); }
+.source { margin: .45rem 0 0; font: .7rem/1.3 var(--mono); color: var(--ink-2); }
+
+.chart { display: flex; flex-direction: column; gap: .35rem; min-height: 0; }
+.chead { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem 1.2rem; flex-wrap: wrap; }
+h2.h { margin: 0; font: 600 1.02rem/1.2 var(--display); }
+.legend { display: flex; flex-wrap: wrap; gap: .3rem 1rem; font-size: .72rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.legend svg { width: 1.6rem; height: .8rem; overflow: visible; }
+.chartbox { position: relative; flex: 1; min-height: 8rem; }
+.chartbox svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+
+/* chart marks, colored from tokens */
+.c-grid { stroke: var(--rule); stroke-width: 1; }
+.c-base { stroke: var(--ink-2); stroke-width: 1; }
+.c-band { fill: var(--panel); }
+.c-tick { fill: var(--ink-2); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.c-tick.is-on { fill: var(--ink); font-weight: 500; }
+.c-ghost { fill: none; stroke: var(--ghost); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.c-line { fill: none; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+.c-bridge { fill: none; stroke-width: 1.6; stroke-dasharray: 2 4; stroke-linecap: round; }
+.c-sgd { stroke: var(--sgd); }
+.c-sam { stroke: var(--sam); }
+.c-dot-sgd { fill: var(--sgd); stroke: var(--bg); stroke-width: 2; }
+.c-dot-sam { fill: var(--sam); stroke: var(--bg); stroke-width: 2; }
+.c-open-sgd { fill: var(--bg); stroke: var(--sgd); stroke-width: 2; }
+.c-open-sam { fill: var(--bg); stroke: var(--sam); stroke-width: 2; }
+.c-break { stroke: var(--ink-2); stroke-width: 1.2; }
+.c-mask { fill: var(--bg); }
+
+.field { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.fgrid {
+  display: grid; gap: .09rem; width: 100%;
+  grid-template-columns: 4.7rem repeat(50, minmax(0, 1fr));
+  max-width: calc(4.7rem + 50 * 1.12rem);
+}
+.cls { align-self: center; padding-right: .45rem; text-align: right; white-space: nowrap; font: .64rem/1 var(--mono); color: var(--ink-2); }
+.tile { aspect-ratio: 1; max-width: 100%; background: var(--rule); transition: background-color .5s ease; }
+.ramp-key { display: inline-flex; align-items: center; gap: .45rem; font-size: .72rem; color: var(--ink-2); white-space: nowrap; }
+.ramp {
+  display: inline-block; width: 7.5rem; height: .62rem;
+  background: linear-gradient(90deg, var(--blue-thread) 0%, var(--teal-thread) 40%, var(--green-thread) 60%, var(--gold-thread) 100%);
+  background: linear-gradient(in oklab 90deg, var(--blue-thread) 0%, var(--teal-thread) 40%, var(--green-thread) 60%, var(--gold-thread) 100%);
+}
+
+/* Examples */
+.examples { display: flex; flex-direction: column; gap: .55rem; min-height: 0; min-width: 0; }
+.cards { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; display: grid; grid-template-rows: repeat(6, minmax(0, 1fr)); gap: .5rem; }
+.card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .85rem; align-items: center; min-height: 0; }
+.thumb {
+  display: block; height: 100%; max-height: 6.4rem; max-width: 100%; aspect-ratio: 1;
+  image-rendering: pixelated; border: .3rem solid var(--rule); transition: border-color .5s ease;
+}
+.ctitle { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; margin-bottom: .32rem; }
+.ctitle b { font: 600 1rem/1.1 var(--display); }
+.cacc { font: .68rem/1.1 var(--mono); color: var(--ink-2); text-align: right; }
+.bars { display: grid; grid-template-columns: 4.9rem minmax(0, 1fr) 2.5rem; column-gap: .45rem; row-gap: .24rem; align-items: center; font-size: .72rem; }
+.bars .nm { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bars .nm.is-true { color: var(--ink); font-weight: 700; }
+.bar { position: relative; height: .56rem; background: var(--panel); }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--ink-2); transition: width .5s ease, background-color .5s ease; }
+.bars .v { font: .68rem/1 var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.bars .empty { visibility: hidden; }
+
+footer {
+  grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 2rem;
+  padding-top: .5rem; border-top: 1px solid var(--rule); font-size: .7rem; color: var(--ink-2);
+}
+footer .keys { white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+/* Narrow or portrait screens: stack and scroll. The one-screen layout is for landscape displays. */
+@media (max-width: 900px), (max-aspect-ratio: 1/1) {
+  html { font-size: 15px; height: auto; }
+  body { height: auto; overflow: auto; }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); padding-inline: 1rem; padding-block: .8rem 1.2rem; }
+  .top { flex-direction: column; align-items: flex-start; gap: .6rem; }
+  h1 { font-size: 1.8rem; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .stat.diff { grid-column: 1 / -1; }
+  .big { font-size: 2.6rem; }
+  .chartbox { flex: none; height: 16rem; }
+  .cards { grid-template-rows: none; }
+  .thumb { height: 5.2rem; }
+  footer { flex-direction: column; gap: .4rem; }
+  footer .keys { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Simulated analog inference · VGG-7 · CIFAR-10</p>
+      <h1>Analog error is a codesign problem</h1>
+    </div>
+    <p class="lede">The same relative error costs very different accuracy depending on where it enters the network, whether neighboring outputs share it, whether it stays with the chip, and how the network was trained.</p>
+  </header>
+
+  <aside class="controls" aria-label="Noise and training controls">
+    <div class="group">
+      <h2 class="label">Error mechanism <kbd>M</kbd></h2>
+      <div class="mech" role="radiogroup" aria-label="Error mechanism">
+        <button type="button" role="radio" id="mech-independent" data-mech="independent_transient">
+          <canvas width="8" height="8" data-glyph="independent" aria-hidden="true"></canvas>
+          <span class="mname">Independent noise</span>
+          <span class="mdesc">A fresh random error on every output, every run.</span>
+        </button>
+        <button type="button" role="radio" id="mech-shared" data-mech="spatially_shared_transient">
+          <canvas width="8" height="8" data-glyph="shared" aria-hidden="true"></canvas>
+          <span class="mname">Spatially shared noise</span>
+          <span class="mdesc">Same error size, but neighboring outputs move together (correlation 0.75).</span>
+        </button>
+        <button type="button" role="radio" id="mech-persistent" data-mech="persistent_weight">
+          <canvas width="8" height="8" data-glyph="persistent" aria-hidden="true"></canvas>
+          <span class="mname">Persistent weight error</span>
+          <span class="mdesc">Each chip stores slightly wrong weights. Rerunning never averages it away.</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2 class="label">Where it enters <kbd>L</kbd></h2>
+      <svg class="net" id="net" viewBox="0 0 134 40" role="img" aria-label="Network layers with the noisy layers filled in"></svg>
+      <div class="seg" role="radiogroup" aria-label="Where the error enters" id="locSeg">
+        <button type="button" role="radio" id="loc-early" data-loc="early">Early</button>
+        <button type="button" role="radio" id="loc-middle" data-loc="middle">Middle</button>
+        <button type="button" role="radio" id="loc-late" data-loc="late">Late</button>
+        <button type="button" role="radio" id="loc-all" data-loc="all">All</button>
+      </div>
+      <p class="note" id="locNote">Two convolutions per group, so each group has the same number of noise sources.</p>
+    </div>
+
+    <div class="group">
+      <h2 class="label">Error size <span><kbd>←</kbd> <kbd>→</kbd></span></h2>
+      <div class="seg" role="radiogroup" aria-label="Error size" id="ampSeg"></div>
+      <p class="note" id="ampNote"></p>
+    </div>
+
+    <div class="group">
+      <h2 class="label">Training <kbd>T</kbd></h2>
+      <div class="seg train" role="radiogroup" aria-label="Training method">
+        <button type="button" role="radio" id="model-sgd" data-model="sgd"><i class="sw sgd"></i>SGD</button>
+        <button type="button" role="radio" id="model-sam" data-model="sam"><i class="sw sam"></i>SAM</button>
+      </div>
+      <p class="note">Same initialization, data, and batch order. SAM also steers training toward flat minima.</p>
+    </div>
+  </aside>
+
+  <main class="center">
+    <h2 class="condition" id="condition"></h2>
+    <div>
+      <div class="stats">
+        <div class="stat" data-model="sgd">
+          <div class="sname"><i class="sw sgd"></i>SGD</div>
+          <div class="big" id="accSgd"></div>
+          <div class="sub" id="subSgd"></div>
+        </div>
+        <div class="stat" data-model="sam">
+          <div class="sname"><i class="sw sam"></i>SAM</div>
+          <div class="big" id="accSam"></div>
+          <div class="sub" id="subSam"></div>
+        </div>
+        <div class="stat diff">
+          <div class="sname">SAM minus SGD</div>
+          <div class="big" id="diff"></div>
+          <div class="sub" id="subDiff"></div>
+        </div>
+      </div>
+      <p class="source" id="source"></p>
+    </div>
+
+    <section class="chart" aria-label="Accuracy as the error grows">
+      <div class="chead">
+        <h2 class="h">Accuracy of one noisy run as the error grows</h2>
+        <div class="legend">
+          <span><svg viewBox="0 0 32 16" aria-hidden="true"><line x1="0" y1="8" x2="32" y2="8" class="c-line c-sgd"/><circle cx="16" cy="8" r="5" class="c-dot-sgd"/></svg>SGD</span>
+          <span><svg viewBox="0 0 32 16" aria-hidden="true"><line x1="0" y1="8" x2="32" y2="8" class="c-line c-sam"/><rect x="11" y="3" width="10" height="10" class="c-dot-sam"/></svg>SAM</span>
+          <span><svg viewBox="0 0 32 16" aria-hidden="true"><circle cx="16" cy="8" r="5" class="c-open-sgd"/></svg>Held-out test set</span>
+          <span><svg viewBox="0 0 32 16" aria-hidden="true"><line x1="0" y1="8" x2="32" y2="8" class="c-ghost"/></svg>Other five settings, <span id="lgModel">SGD</span></span>
+        </div>
+      </div>
+      <div class="chartbox" id="chartBox"><svg id="chart" role="img" aria-label="Accuracy versus error size for SGD and SAM"></svg></div>
+    </section>
+
+    <section class="field" aria-label="Per-image outcomes">
+      <div class="chead">
+        <h2 class="h">500 validation images, one row per class</h2>
+        <span class="ramp-key">right in 0% <i class="ramp"></i> 100% of runs</span>
+      </div>
+      <div class="fgrid" id="fgrid"></div>
+      <p class="note" id="fieldNote"></p>
+    </section>
+  </main>
+
+  <section class="examples" aria-label="Six example images">
+    <div class="chead">
+      <h2 class="h">Six pictures up close</h2>
+      <span class="note mono" id="exCount"></span>
+    </div>
+    <p class="note">How often each class won. Ordered from the image SGD finds easiest to the one it gets wrong even without noise.</p>
+    <ol class="cards" id="cards"></ol>
+  </section>
+
+  <footer>
+    <span>Mechanism study with Gaussian error. It is not a prediction for any physical chip. One SGD/SAM training-seed pair, so intervals do not include training-seed variation.</span>
+    <span class="keys">Keys: M mechanism · L location · ← → error size · T training · F full screen</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const D = /*__DATA__*/null;
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const AMPS = [0].concat(D.amplitudes);
+  const AMP_LABEL = a => a === 0 ? "Off" : Math.round(a * 100) + "%";
+  const MECHS = {
+    independent_transient: "Independent noise",
+    spatially_shared_transient: "Spatially shared noise",
+    persistent_weight: "Persistent weight error",
+  };
+  const LOCS = {
+    early: { layers: [0, 1], phrase: "in the early layers (conv1–2)" },
+    middle: { layers: [2, 3], phrase: "in the middle layers (conv3–4)" },
+    late: { layers: [4, 5], phrase: "in the late layers (conv5–6)" },
+    all: { layers: [0, 1, 2, 3, 4, 5, 6], phrase: "in every layer" },
+  };
+  const MECH_ORDER = Object.keys(MECHS);
+  const LOC_ORDER = Object.keys(LOCS);
+  const S = { mech: "independent_transient", loc: "all", ai: 4, model: "sgd" };
+
+  const sid = (mech, loc, a) => a === 0 ? "clean" : mech + "." + loc + ".a" + a;
+  const current = () => sid(S.mech, S.loc, AMPS[S.ai]);
+
+  /* ---------- blue-to-gold scale, interpolated in OKLab ---------- */
+  const STOPS = [[0, "#043673"], [0.4, "#008F91"], [0.6, "#009647"], [1, "#FDB515"]];
+  const toLin = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  const toSrgb = c => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  function hexToLab(h) {
+    const [r, g, b] = [1, 3, 5].map(i => toLin(parseInt(h.slice(i, i + 2), 16) / 255));
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+  }
+  function labToCss([L, A, B]) {
+    const l = Math.pow(L + 0.3963377774 * A + 0.2158037573 * B, 3);
+    const m = Math.pow(L - 0.1055613458 * A - 0.0638541728 * B, 3);
+    const s = Math.pow(L - 0.0894841775 * A - 1.2914855480 * B, 3);
+    const rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+                 -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+                 -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+    return "rgb(" + rgb.map(c => Math.round(255 * Math.min(1, Math.max(0, toSrgb(c))))).join(",") + ")";
+  }
+  const STOP_LAB = STOPS.map(([t, h]) => [t, hexToLab(h)]);
+  function ramp(t) {
+    t = Math.min(1, Math.max(0, t));
+    let i = 0;
+    while (i < STOP_LAB.length - 2 && t > STOP_LAB[i + 1][0]) i++;
+    const [t0, a] = STOP_LAB[i], [t1, b] = STOP_LAB[i + 1];
+    const u = (t - t0) / (t1 - t0);
+    return labToCss(a.map((v, k) => v + (b[k] - v) * u));
+  }
+
+  /* ---------- formatting ---------- */
+  const MINUS = "−";
+  const signed = (v, d = 1) => (v >= 0 ? "+" : MINUS) + Math.abs(v).toFixed(d);
+  const fmtInt = n => n.toLocaleString("en-US");
+  const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+  function runsPhrase(chips, reads) {
+    if (chips * reads === 1) return "1 exact run";
+    return chips > 1 ? plural(chips, "simulated chip") : plural(reads, "noisy run");
+  }
+
+  /* ---------- controls ---------- */
+  const ampSeg = $("#ampSeg");
+  AMPS.forEach((a, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "radio"); b.id = "amp-" + i; b.dataset.ai = i;
+    b.textContent = AMP_LABEL(a);
+    ampSeg.appendChild(b);
+  });
+
+  $$(".mech button").forEach(b => b.addEventListener("click", () => setMech(b.dataset.mech)));
+  $$("#locSeg button").forEach(b => b.addEventListener("click", () => setLoc(b.dataset.loc)));
+  $$("#ampSeg button").forEach(b => b.addEventListener("click", () => { S.ai = +b.dataset.ai; render(); }));
+  $$(".train button").forEach(b => b.addEventListener("click", () => { S.model = b.dataset.model; render(); }));
+
+  function setMech(m) {
+    S.mech = m;
+    if (m !== "independent_transient") S.loc = "all";
+    render();
+  }
+  function setLoc(l) {
+    if (S.mech !== "independent_transient" && l !== "all") return;
+    S.loc = l; render();
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "arrowright") { S.ai = Math.min(AMPS.length - 1, S.ai + 1); render(); e.preventDefault(); }
+    else if (k === "arrowleft") { S.ai = Math.max(0, S.ai - 1); render(); e.preventDefault(); }
+    else if (k === "m") setMech(MECH_ORDER[(MECH_ORDER.indexOf(S.mech) + 1) % MECH_ORDER.length]);
+    else if (k === "l") { if (S.mech === "independent_transient") setLoc(LOC_ORDER[(LOC_ORDER.indexOf(S.loc) + 1) % LOC_ORDER.length]); }
+    else if (k === "t" || k === "s") { S.model = S.model === "sgd" ? "sam" : "sgd"; render(); }
+    else if (k === "f") {
+      const el = document.documentElement;
+      const p = document.fullscreenElement ? document.exitFullscreen() : (el.requestFullscreen ? el.requestFullscreen() : null);
+      if (p && p.catch) p.catch(() => {});
+    }
+  });
+
+  /* ---------- network diagram ---------- */
+  const NS = "http://www.w3.org/2000/svg";
+  const netBlocks = [];
+  (function buildNet() {
+    const svg = $("#net");
+    const spec = [[64, 32], [64, 32], [128, 16], [128, 16], [256, 8], [256, 8], [10, 1]];
+    const names = ["1", "2", "3", "4", "5", "6", "fc"];
+    const cy = 16;
+    let x = 20;
+    const wire = document.createElementNS(NS, "line");
+    wire.setAttribute("class", "wire");
+    wire.setAttribute("x1", 8); wire.setAttribute("y1", cy);
+    svg.appendChild(wire);
+    const img = document.createElementNS(NS, "image");
+    img.setAttribute("href", D.examples.images[1]);
+    img.setAttribute("x", 0); img.setAttribute("y", cy - 7); img.setAttribute("width", 14); img.setAttribute("height", 14);
+    svg.appendChild(img);
+    const lbl = (tx, text) => {
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", tx); t.setAttribute("y", 38); t.setAttribute("text-anchor", "middle");
+      t.textContent = text; svg.appendChild(t);
+    };
+    lbl(7, "input");
+    spec.forEach(([ch, sp], i) => {
+      const w = i === 6 ? 4.5 : 4 + ch / 256 * 12;
+      const h = i === 6 ? 8 : { 32: 28, 16: 21, 8: 14 }[sp];
+      if (i === 2 || i === 4 || i === 6) x += 5;
+      const r = document.createElementNS(NS, "rect");
+      r.setAttribute("x", x); r.setAttribute("y", cy - h / 2); r.setAttribute("width", w); r.setAttribute("height", h);
+      r.setAttribute("rx", .6); r.setAttribute("class", "blk");
+      const title = document.createElementNS(NS, "title");
+      title.textContent = i === 6 ? "classifier, 256 → 10" : "conv" + (i + 1) + ", " + ch + " channels at " + sp + "×" + sp;
+      r.appendChild(title);
+      r.addEventListener("click", () => {
+        if (i === 6) setLoc("all"); else setLoc(LOC_ORDER[Math.floor(i / 2)]);
+      });
+      svg.appendChild(r);
+      netBlocks.push(r);
+      lbl(x + w / 2, names[i]);
+      x += w + 2.5;
+    });
+    wire.setAttribute("x2", x); wire.setAttribute("y2", cy);
+  })();
+
+  /* ---------- mechanism glyphs: transient noise flickers, stored-weight error holds still ---------- */
+  (function glyphs() {
+    const N = 8;
+    let seed = 20260929;
+    const rand = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const randn = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+    const fixed = Array.from({ length: N * N }, () => randn(rand));
+    const canv = $$("canvas[data-glyph]");
+    function paint(c, vals) {
+      const ctx = c.getContext("2d");
+      const im = ctx.createImageData(N, N);
+      vals.forEach((v, i) => {
+        const g = Math.round(Math.min(235, Math.max(25, 150 - 58 * v)));
+        im.data.set([g, g, g + 2, 255], i * 4);
+      });
+      ctx.putImageData(im, 0, 0);
+    }
+    function frame() {
+      canv.forEach(c => {
+        const kind = c.dataset.glyph;
+        let vals;
+        if (kind === "persistent") vals = fixed;
+        else if (kind === "shared") { const z = randn(Math.random); vals = fixed.map(() => Math.sqrt(0.75) * z + 0.5 * randn(Math.random)); }
+        else vals = fixed.map(() => randn(Math.random));
+        paint(c, vals);
+      });
+    }
+    frame();
+    if (!REDUCED) setInterval(() => { if (!document.hidden) frame(); }, 420);
+  })();
+
+  /* ---------- 500-image field ---------- */
+  const tiles = [];
+  (function buildField() {
+    const g = $("#fgrid");
+    const frag = document.createDocumentFragment();
+    D.classes.forEach(name => {
+      const l = document.createElement("span");
+      l.className = "cls"; l.textContent = name;
+      frag.appendChild(l);
+      for (let j = 0; j < 50; j++) {
+        const t = document.createElement("i");
+        t.className = "tile";
+        frag.appendChild(t); tiles.push(t);
+      }
+    });
+    g.appendChild(frag);
+  })();
+
+  /* ---------- example cards ---------- */
+  const cards = [];
+  (function buildCards() {
+    const ol = $("#cards");
+    D.examples.images.forEach((src, j) => {
+      const li = document.createElement("li");
+      li.className = "card";
+      const truth = D.classes[D.examples.labels[j]];
+      li.innerHTML =
+        '<img class="thumb" alt="' + truth + ', validation image ' + D.examples.ids[j] + '" src="' + src + '">' +
+        '<div><div class="ctitle"><b>' + truth + '</b><span class="cacc"></span></div><div class="bars"></div></div>';
+      const bars = li.querySelector(".bars");
+      const rows = [];
+      for (let r = 0; r < 3; r++) {
+        const nm = document.createElement("span"); nm.className = "nm";
+        const bar = document.createElement("span"); bar.className = "bar";
+        const fill = document.createElement("i"); fill.style.width = "0%"; bar.appendChild(fill);
+        const v = document.createElement("span"); v.className = "v";
+        bars.append(nm, bar, v);
+        rows.push({ nm, bar, fill, v });
+      }
+      ol.appendChild(li);
+      cards.push({ img: li.querySelector(".thumb"), acc: li.querySelector(".cacc"), rows });
+    });
+  })();
+
+  /* ---------- animated numbers ---------- */
+  const shown = {};
+  function tween(el, key, target, fmt) {
+    const from = shown[key] === undefined ? target : shown[key];
+    shown[key] = target;
+    cancelAnimationFrame(el._raf);
+    if (REDUCED || from === target) { el.innerHTML = fmt(target); return; }
+    const t0 = performance.now(), dur = 420;
+    const step = now => {
+      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.innerHTML = fmt(from + (target - from) * e);
+      if (k < 1) el._raf = requestAnimationFrame(step);
+    };
+    el._raf = requestAnimationFrame(step);
+  }
+
+  /* ---------- chart ---------- */
+  function drawChart() {
+    const box = $("#chartBox"), svg = $("#chart");
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W || !H) return;
+    const fs = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const m = { l: fs * 2.7, r: fs * 1.4, t: fs * .6, b: fs * 1.7 };
+    const pw = W - m.l - m.r, ph = H - m.t - m.b, pad = fs * 1.1;
+    const U = [0, 1.4, 2.4, 3.4, 4.4, 5.4], UMAX = 5.4;
+    const x = i => m.l + pad + U[i] / UMAX * (pw - 2 * pad);
+    const y = v => m.t + (1 - v) * ph;
+    const tick = fs * .68;
+    let s = "";
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+
+    const bw = Math.min(fs * 3, (x(2) - x(1)) * .72);
+    s += '<rect class="c-band" x="' + (x(S.ai) - bw / 2) + '" y="' + m.t + '" width="' + bw + '" height="' + ph + '" rx="3"/>';
+    [0.25, 0.5, 0.75, 1].forEach(v => { s += '<line class="c-grid" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>'; });
+    s += '<line class="c-base" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y(0) + '" y2="' + y(0) + '"/>';
+    [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+      s += '<text class="c-tick" font-size="' + tick + '" x="' + (m.l - fs * .45) + '" y="' + (y(v) + tick * .35) + '" text-anchor="end">' + Math.round(v * 100) + '%</text>';
+    });
+    AMPS.forEach((a, i) => {
+      s += '<text class="c-tick' + (i === S.ai ? ' is-on' : '') + '" font-size="' + tick + '" x="' + x(i) + '" y="' + (y(0) + fs * 1.25) + '" text-anchor="middle">' + AMP_LABEL(a) + '</text>';
+    });
+    const mid = (x(0) + x(1)) / 2, b0 = y(0);
+    s += '<rect class="c-mask" x="' + (mid - 5) + '" y="' + (b0 - 2) + '" width="10" height="4"/>';
+    s += '<line class="c-break" x1="' + (mid - 7) + '" y1="' + (b0 + 5) + '" x2="' + (mid - 1) + '" y2="' + (b0 - 5) + '"/>';
+    s += '<line class="c-break" x1="' + (mid + 1) + '" y1="' + (b0 + 5) + '" x2="' + (mid + 7) + '" y2="' + (b0 - 5) + '"/>';
+
+    const series = (mech, loc, model) => AMPS.map(a => D.val[sid(mech, loc, a)][model].acc);
+    const path = vals => vals.slice(1).map((v, k) => (k ? "L" : "M") + x(k + 1).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+    const bridge = vals => "M" + x(0) + " " + y(vals[0]) + " L" + x(1) + " " + y(vals[1]);
+
+    D.settings.forEach(st => {
+      if (st.mech === S.mech && st.loc === S.loc) return;
+      const v = series(st.mech, st.loc, S.model);
+      s += '<path class="c-ghost" d="' + path(v) + '"><title>' + MECHS[st.mech] + ' ' + LOCS[st.loc].phrase + '</title></path>';
+    });
+
+    const r = fs * .34, q = fs * .62, off = fs * .8;
+    const marker = (model, cx, cy, open, label) => {
+      const cls = (open ? "c-open-" : "c-dot-") + model;
+      const t = "<title>" + label + "</title>";
+      return model === "sgd"
+        ? '<circle class="' + cls + '" cx="' + cx + '" cy="' + cy + '" r="' + r + '">' + t + '</circle>'
+        : '<rect class="' + cls + '" x="' + (cx - q / 2) + '" y="' + (cy - q / 2) + '" width="' + q + '" height="' + q + '">' + t + '</rect>';
+    };
+    const order = S.model === "sgd" ? ["sam", "sgd"] : ["sgd", "sam"];
+    order.forEach(model => {
+      const v = series(S.mech, S.loc, model);
+      s += '<path class="c-bridge c-' + model + '" d="' + bridge(v) + '"/>';
+      s += '<path class="c-line c-' + model + '" d="' + path(v) + '"/>';
+    });
+    order.forEach(model => {
+      const v = series(S.mech, S.loc, model);
+      v.forEach((val, i) => {
+        const e = D.val[sid(S.mech, S.loc, AMPS[i])][model];
+        s += marker(model, x(i), y(val), false, model.toUpperCase() + " · " + AMP_LABEL(AMPS[i]) + " · " + (val * 100).toFixed(1) + "% on " + fmtInt(e.images) + " validation images × " + runsPhrase(e.chips, e.reads));
+      });
+      AMPS.forEach((a, i) => {
+        const t = D.test[sid(S.mech, S.loc, a)];
+        if (!t) return;
+        const e = t[model];
+        s += marker(model, x(i) + off, y(e.acc), true, model.toUpperCase() + " · " + AMP_LABEL(a) + " · " + (e.acc * 100).toFixed(1) + "% on " + fmtInt(e.images) + " test images × " + runsPhrase(e.chips, e.reads));
+      });
+    });
+    svg.innerHTML = s;
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    const id = current();
+    const a = AMPS[S.ai];
+
+    // controls
+    $$(".mech button").forEach(b => b.setAttribute("aria-checked", b.dataset.mech === S.mech));
+    $$("#locSeg button").forEach(b => {
+      b.setAttribute("aria-checked", b.dataset.loc === S.loc);
+      b.disabled = S.mech !== "independent_transient" && b.dataset.loc !== "all";
+    });
+    $$("#ampSeg button").forEach(b => b.setAttribute("aria-checked", +b.dataset.ai === S.ai));
+    $$(".train button").forEach(b => b.setAttribute("aria-checked", b.dataset.model === S.model));
+    const on = LOCS[S.loc].layers;
+    netBlocks.forEach((r, i) => r.classList.toggle("on", a !== 0 && on.includes(i)));
+    $("#locNote").textContent = S.mech === "independent_transient"
+      ? "Two convolutions per group, so each group has the same number of noise sources."
+      : "This mechanism was measured with error in every layer only.";
+    $("#ampNote").textContent = S.mech === "persistent_weight"
+      ? "Weight error σ as a share of each layer's stored-weight RMS."
+      : "Noise σ as a share of each layer's clean output RMS.";
+
+    // condition headline
+    $("#condition").innerHTML = a === 0
+      ? "No added error. The network runs exactly."
+      : MECHS[S.mech] + " " + LOCS[S.loc].phrase + ' <span class="amp">at ' + AMP_LABEL(a) + (S.mech === "persistent_weight" ? " of weight RMS" : " of output RMS") + "</span>";
+
+    // numbers: the held-out test set where it was run, otherwise the validation sweep
+    const isTest = !!D.test[id];
+    const P = isTest ? D.test : D.val;
+    const row = P[id], clean = P.clean;
+    const pctHtml = v => v.toFixed(1) + "<small>%</small>";
+    tween($("#accSgd"), "sgd", row.sgd.acc * 100, pctHtml);
+    tween($("#accSam"), "sam", row.sam.acc * 100, pctHtml);
+    tween($("#diff"), "diff", row.diff.est * 100, v => signed(v) + "<small> points</small>");
+    ["sgd", "sam"].forEach(model => {
+      const drop = (clean[model].acc - row[model].acc) * 100;
+      $("#sub" + (model === "sgd" ? "Sgd" : "Sam")).textContent = a === 0
+        ? "Clean accuracy, one exact run per image"
+        : Math.abs(drop).toFixed(1) + " points " + (drop >= 0 ? "below" : "above") + " its own clean " + (clean[model].acc * 100).toFixed(1) + "%";
+    });
+    $("#subDiff").textContent = Math.round(row.diff.conf * 100) + "% interval " + signed(row.diff.lo * 100) + " to " + signed(row.diff.hi * 100) + " points, resampling images";
+    $$(".stat[data-model]").forEach(el => el.classList.toggle("is-selected", el.dataset.model === S.model));
+    const e0 = row.sgd;
+    $("#source").textContent = (isTest ? "Held-out test set" : "Validation panel") + " · " + fmtInt(e0.images) + " images × " + runsPhrase(e0.chips, e0.reads) + " each";
+
+    // chart
+    $("#lgModel").textContent = S.model.toUpperCase();
+    drawChart();
+
+    // field
+    const f = D.field.runs[id][S.model];
+    for (let i = 0; i < tiles.length; i++) {
+      const k = +f.k[i];
+      tiles[i].style.backgroundColor = ramp(k / f.n);
+      tiles[i].title = D.classes[Math.floor(i / 50)] + ": right in " + k + " of " + plural(f.n, "run");
+    }
+    const vf = D.val[id][S.model];
+    $("#fieldNote").textContent = S.model.toUpperCase() + ", " + runsPhrase(vf.chips, vf.reads) + " per image. Within each row, SGD's clean confidence falls from left to right.";
+
+    // examples
+    const ex = D.examples.runs[id][S.model];
+    const n = ex.chips * ex.reads;
+    $("#exCount").textContent = S.model.toUpperCase() + " · " + runsPhrase(ex.chips, ex.reads) + " each" + (ex.src === "validation" && n > 1 ? ", validation sweep" : "");
+    cards.forEach((c, j) => {
+      const win = ex.win[j], truth = D.examples.labels[j], acc = win[truth];
+      c.img.style.borderColor = ramp(acc);
+      const unit = ex.chips > 1 ? "chips" : "runs";
+      c.acc.textContent = n === 1 ? (acc > 0.5 ? "right" : "wrong")
+        : n <= 8 ? "right in " + Math.round(acc * n) + " of " + n + " " + unit
+        : "right in " + Math.round(acc * 100) + "% of " + unit;
+      let top = win.map((w, k) => [w, k]).filter(([w, k]) => w > 0 || k === truth).sort((p, q) => q[0] - p[0]).slice(0, 3);
+      if (!top.some(([, k]) => k === truth)) top[top.length - 1] = [acc, truth];
+      c.rows.forEach((r, i) => {
+        const item = top[i];
+        [r.nm, r.bar, r.v].forEach(el => el.classList.toggle("empty", !item));
+        if (!item) { r.fill.style.width = "0%"; return; }
+        const [w, k] = item;
+        r.nm.textContent = D.classes[k];
+        r.nm.classList.toggle("is-true", k === truth);
+        r.fill.style.width = (w * 100).toFixed(1) + "%";
+        r.fill.style.backgroundColor = k === truth ? ramp(w) : "";
+        r.v.textContent = Math.round(w * 100) + "%";
+      });
+    });
+  }
+
+  let resizeRaf = 0;
+  new ResizeObserver(() => { cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(drawChart); }).observe($("#chartBox"));
+  render();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawChart);
+})();
+</script>
+<!--END PAGE-->
+</body>
+</html>

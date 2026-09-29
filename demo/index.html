@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--BEGIN PAGE-->
+<title>Analog Noise Codesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Open+Sans:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<style>
+/* Layout: one 16:9 screen, no scrolling. Levers on the left; the consequence in the
+   middle (numbers, curve, 500-image field); six pictures up close on the right.
+   Single light theme on purpose: CMU core colors on white, identical on any presenter laptop. */
+:root {
+  color-scheme: light;
+  /* CMU core colors */
+  --carnegie-red: #C41230;
+  --black: #000000;
+  --iron-gray: #6D6E71;
+  --steel-gray: #E0E0E0;
+  --white: #FFFFFF;
+  /* Tartan threads: the only low-to-high scale, blue (low) to gold (high) */
+  --blue-thread: #043673;
+  --teal-thread: #008F91;
+  --green-thread: #009647;
+  --gold-thread: #FDB515;
+
+  --bg: var(--white);
+  --ink: var(--black);
+  --ink-2: var(--iron-gray);
+  --rule: var(--steel-gray);
+  --panel: #F4F4F4;            /* Steel Gray, lightened for fills */
+  --ghost: #C4C5C7;            /* between Steel and Iron, for context lines */
+  --sgd: var(--black);
+  --sam: var(--carnegie-red);
+
+  --display: "Source Serif 4", "Source Serif Pro", Georgia, "Times New Roman", serif;
+  --sans: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+/* 1rem = 20px on a 1920×1080 screen, scales with both width and height. */
+html { height: 100%; font-size: clamp(13px, min(1.04vw, 1.85vh), 44px); }
+body {
+  margin: 0; height: 100%; overflow: hidden;
+  border-top: .4rem solid var(--carnegie-red);
+  background: var(--bg); color: var(--ink);
+  font-family: var(--sans); font-size: 1rem; line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+button:focus-visible { outline: .14rem solid var(--ink); outline-offset: .14rem; }
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 19.5rem minmax(0, 1fr) 23rem;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: 1.8rem; row-gap: .9rem;
+  padding-inline: 1.5rem; padding-block: .8rem .6rem;
+}
+
+/* Header */
+.top {
+  grid-column: 1 / -1;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 2.5rem;
+  padding-bottom: .75rem; border-bottom: 1px solid var(--rule);
+}
+.eyebrow {
+  margin: 0 0 .35rem; font: 700 .7rem/1.2 var(--sans);
+  letter-spacing: .13em; text-transform: uppercase; color: var(--carnegie-red);
+}
+h1 { margin: 0; font: 600 2.2rem/1.05 var(--display); letter-spacing: -.012em; text-wrap: balance; }
+.lede { margin: 0; max-width: 41rem; font-size: .92rem; color: var(--ink-2); text-wrap: pretty; }
+
+/* Shared type */
+.label {
+  margin: 0; display: flex; align-items: center; justify-content: space-between;
+  font: 700 .7rem/1 var(--sans); letter-spacing: .11em; text-transform: uppercase;
+}
+kbd {
+  font: 500 .62rem/1 var(--mono); letter-spacing: 0; color: var(--ink-2);
+  border: 1px solid var(--rule); border-radius: .2rem; padding: .16rem .32rem;
+}
+.note { margin: 0; font-size: .74rem; line-height: 1.35; color: var(--ink-2); }
+.mono { font-family: var(--mono); }
+
+/* Controls */
+.controls { display: flex; flex-direction: column; gap: 1.15rem; min-height: 0; }
+.group { display: flex; flex-direction: column; gap: .45rem; }
+.mech { display: flex; flex-direction: column; gap: .4rem; }
+.mech button {
+  display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); column-gap: .75rem; align-items: center;
+  text-align: left; padding: .5rem .65rem; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--rule); border-radius: .3rem;
+  transition: border-color .2s, background-color .2s;
+}
+.mech button:hover { border-color: var(--ink-2); }
+.mech button[aria-checked="true"] { background: var(--panel); border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.mech canvas { grid-row: 1 / 3; width: 2.6rem; height: 2.6rem; image-rendering: pixelated; display: block; }
+.mname { font-weight: 700; font-size: .92rem; }
+.mdesc { font-size: .74rem; line-height: 1.3; color: var(--ink-2); }
+
+.net { display: block; width: 100%; height: auto; }
+.net .blk { fill: var(--bg); stroke: var(--ink-2); stroke-width: .5; transition: fill .3s; cursor: pointer; }
+.net .blk.on { fill: var(--ink); stroke: var(--ink); }
+.net .wire { stroke: var(--ghost); stroke-width: .6; }
+.net text { font-family: var(--mono); font-size: 4px; fill: var(--ink-2); }
+.net image { image-rendering: pixelated; }
+
+.seg {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--ink); border-radius: .3rem; overflow: hidden;
+}
+.seg button {
+  padding: .58rem .15rem; border: 0; border-left: 1px solid var(--rule); cursor: pointer;
+  background: var(--bg); font-weight: 600; font-size: .84rem; font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; justify-content: center; gap: .4rem;
+  transition: background-color .2s, color .2s;
+}
+.seg button:first-child { border-left: 0; }
+.seg button:hover:not(:disabled) { background: var(--panel); }
+.seg button[aria-checked="true"] { background: var(--ink); color: var(--white); }
+.seg button[data-model="sam"][aria-checked="true"] { background: var(--sam); }
+.seg button:disabled { color: var(--ghost); background: var(--panel); cursor: not-allowed; }
+.train button { font-size: .95rem; padding-block: .7rem; }
+
+.sw { display: inline-block; width: .62rem; height: .62rem; flex: none; background: currentColor; }
+.sw.sgd { border-radius: 50%; }
+.stat .sw.sgd { color: var(--sgd); }
+.stat .sw.sam { color: var(--sam); }
+.seg .sw { color: var(--sgd); }
+.seg [data-model="sam"] .sw { color: var(--sam); }
+.seg [aria-checked="true"] .sw { color: var(--white); }
+
+/* Center */
+.center { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: .75rem; min-width: 0; min-height: 0; }
+.condition { margin: 0; font: 600 1.35rem/1.2 var(--display); text-wrap: balance; }
+.condition .amp { color: var(--ink-2); font-weight: 500; }
+.stats { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 1.5rem; }
+.stat { border-top: .24rem solid var(--rule); padding-top: .5rem; transition: border-color .3s; min-width: 0; }
+.stat.is-selected[data-model="sgd"] { border-top-color: var(--sgd); }
+.stat.is-selected[data-model="sam"] { border-top-color: var(--sam); }
+.sname { display: flex; align-items: center; gap: .45rem; font: 700 .7rem/1 var(--sans); letter-spacing: .11em; text-transform: uppercase; }
+.big { margin: .3rem 0 .2rem; font: 600 3.2rem/1 var(--display); letter-spacing: -.02em; font-variant-numeric: tabular-nums lining-nums; }
+.big small { font-size: .42em; font-weight: 500; color: var(--ink-2); margin-left: .12em; letter-spacing: 0; }
+.sub { font-size: .78rem; color: var(--ink-2); }
+.source { margin: .45rem 0 0; font: .7rem/1.3 var(--mono); color: var(--ink-2); }
+
+.chart { display: flex; flex-direction: column; gap: .35rem; min-height: 0; }
+.chead { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem 1.2rem; flex-wrap: wrap; }
+h2.h { margin: 0; font: 600 1.02rem/1.2 var(--display); }
+.legend { display: flex; flex-wrap: wrap; gap: .3rem 1rem; font-size: .72rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.legend svg { width: 1.6rem; height: .8rem; overflow: visible; }
+.chartbox { position: relative; flex: 1; min-height: 8rem; }
+.chartbox svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+
+/* chart marks, colored from tokens */
+.c-grid { stroke: var(--rule); stroke-width: 1; }
+.c-base { stroke: var(--ink-2); stroke-width: 1; }
+.c-band { fill: var(--panel); }
+.c-tick { fill: var(--ink-2); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.c-tick.is-on { fill: var(--ink); font-weight: 500; }
+.c-ghost { fill: none; stroke: var(--ghost); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.c-line { fill: none; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+.c-bridge { fill: none; stroke-width: 1.6; stroke-dasharray: 2 4; stroke-linecap: round; }
+.c-sgd { stroke: var(--sgd); }
+.c-sam { stroke: var(--sam); }
+.c-dot-sgd { fill: var(--sgd); stroke: var(--bg); stroke-width: 2; }
+.c-dot-sam { fill: var(--sam); stroke: var(--bg); stroke-width: 2; }
+.c-open-sgd { fill: var(--bg); stroke: var(--sgd); stroke-width: 2; }
+.c-open-sam { fill: var(--bg); stroke: var(--sam); stroke-width: 2; }
+.c-break { stroke: var(--ink-2); stroke-width: 1.2; }
+.c-mask { fill: var(--bg); }
+
+.field { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.fgrid {
+  display: grid; gap: .09rem; width: 100%;
+  grid-template-columns: 4.7rem repeat(50, minmax(0, 1fr));
+  max-width: calc(4.7rem + 50 * 1.12rem);
+}
+.cls { align-self: center; padding-right: .45rem; text-align: right; white-space: nowrap; font: .64rem/1 var(--mono); color: var(--ink-2); }
+.tile { aspect-ratio: 1; max-width: 100%; background: var(--rule); transition: background-color .5s ease; }
+.ramp-key { display: inline-flex; align-items: center; gap: .45rem; font-size: .72rem; color: var(--ink-2); white-space: nowrap; }
+.ramp {
+  display: inline-block; width: 7.5rem; height: .62rem;
+  background: linear-gradient(90deg, var(--blue-thread) 0%, var(--teal-thread) 40%, var(--green-thread) 60%, var(--gold-thread) 100%);
+  background: linear-gradient(in oklab 90deg, var(--blue-thread) 0%, var(--teal-thread) 40%, var(--green-thread) 60%, var(--gold-thread) 100%);
+}
+
+/* Examples */
+.examples { display: flex; flex-direction: column; gap: .55rem; min-height: 0; min-width: 0; }
+.cards { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; display: grid; grid-template-rows: repeat(6, minmax(0, 1fr)); gap: .5rem; }
+.card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .85rem; align-items: center; min-height: 0; }
+.thumb {
+  display: block; height: 100%; max-height: 6.4rem; max-width: 100%; aspect-ratio: 1;
+  image-rendering: pixelated; border: .3rem solid var(--rule); transition: border-color .5s ease;
+}
+.ctitle { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; margin-bottom: .32rem; }
+.ctitle b { font: 600 1rem/1.1 var(--display); }
+.cacc { font: .68rem/1.1 var(--mono); color: var(--ink-2); text-align: right; }
+.bars { display: grid; grid-template-columns: 4.9rem minmax(0, 1fr) 2.5rem; column-gap: .45rem; row-gap: .24rem; align-items: center; font-size: .72rem; }
+.bars .nm { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bars .nm.is-true { color: var(--ink); font-weight: 700; }
+.bar { position: relative; height: .56rem; background: var(--panel); }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--ink-2); transition: width .5s ease, background-color .5s ease; }
+.bars .v { font: .68rem/1 var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.bars .empty { visibility: hidden; }
+
+footer {
+  grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 2rem;
+  padding-top: .5rem; border-top: 1px solid var(--rule); font-size: .7rem; color: var(--ink-2);
+}
+footer .keys { white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+/* Narrow or portrait screens: stack and scroll. The one-screen layout is for landscape displays. */
+@media (max-width: 900px), (max-aspect-ratio: 1/1) {
+  html { font-size: 15px; height: auto; }
+  body { height: auto; overflow: auto; }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); padding-inline: 1rem; padding-block: .8rem 1.2rem; }
+  .top { flex-direction: column; align-items: flex-start; gap: .6rem; }
+  h1 { font-size: 1.8rem; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .stat.diff { grid-column: 1 / -1; }
+  .big { font-size: 2.6rem; }
+  .chartbox { flex: none; height: 16rem; }
+  .cards { grid-template-rows: none; }
+  .thumb { height: 5.2rem; }
+  footer { flex-direction: column; gap: .4rem; }
+  footer .keys { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Simulated analog inference · VGG-7 · CIFAR-10</p>
+      <h1>Analog error is a codesign problem</h1>
+    </div>
+    <p class="lede">The same relative error costs very different accuracy depending on where it enters the network, whether neighboring outputs share it, whether it stays with the chip, and how the network was trained.</p>
+  </header>
+
+  <aside class="controls" aria-label="Noise and training controls">
+    <div class="group">
+      <h2 class="label">Error mechanism <kbd>M</kbd></h2>
+      <div class="mech" role="radiogroup" aria-label="Error mechanism">
+        <button type="button" role="radio" id="mech-independent" data-mech="independent_transient">
+          <canvas width="8" height="8" data-glyph="independent" aria-hidden="true"></canvas>
+          <span class="mname">Independent noise</span>
+          <span class="mdesc">A fresh random error on every output, every run.</span>
+        </button>
+        <button type="button" role="radio" id="mech-shared" data-mech="spatially_shared_transient">
+          <canvas width="8" height="8" data-glyph="shared" aria-hidden="true"></canvas>
+          <span class="mname">Spatially shared noise</span>
+          <span class="mdesc">Same error size, but neighboring outputs move together (correlation 0.75).</span>
+        </button>
+        <button type="button" role="radio" id="mech-persistent" data-mech="persistent_weight">
+          <canvas width="8" height="8" data-glyph="persistent" aria-hidden="true"></canvas>
+          <span class="mname">Persistent weight error</span>
+          <span class="mdesc">Each chip stores slightly wrong weights. Rerunning never averages it away.</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2 class="label">Where it enters <kbd>L</kbd></h2>
+      <svg class="net" id="net" viewBox="0 0 134 40" role="img" aria-label="Network layers with the noisy layers filled in"></svg>
+      <div class="seg" role="radiogroup" aria-label="Where the error enters" id="locSeg">
+        <button type="button" role="radio" id="loc-early" data-loc="early">Early</button>
+        <button type="button" role="radio" id="loc-middle" data-loc="middle">Middle</button>
+        <button type="button" role="radio" id="loc-late" data-loc="late">Late</button>
+        <button type="button" role="radio" id="loc-all" data-loc="all">All</button>
+      </div>
+      <p class="note" id="locNote">Two convolutions per group, so each group has the same number of noise sources.</p>
+    </div>
+
+    <div class="group">
+      <h2 class="label">Error size <span><kbd>←</kbd> <kbd>→</kbd></span></h2>
+      <div class="seg" role="radiogroup" aria-label="Error size" id="ampSeg"></div>
+      <p class="note" id="ampNote"></p>
+    </div>
+
+    <div class="group">
+      <h2 class="label">Training <kbd>T</kbd></h2>
+      <div class="seg train" role="radiogroup" aria-label="Training method">
+        <button type="button" role="radio" id="model-sgd" data-model="sgd"><i class="sw sgd"></i>SGD</button>
+        <button type="button" role="radio" id="model-sam" data-model="sam"><i class="sw sam"></i>SAM</button>
+      </div>
+      <p class="note">Same initialization, data, and batch order. SAM also steers training toward flat minima.</p>
+    </div>
+  </aside>
+
+  <main class="center">
+    <h2 class="condition" id="condition"></h2>
+    <div>
+      <div class="stats">
+        <div class="stat" data-model="sgd">
+          <div class="sname"><i class="sw sgd"></i>SGD</div>
+          <div class="big" id="accSgd"></div>
+          <div class="sub" id="subSgd"></div>
+        </div>
+        <div class="stat" data-model="sam">
+          <div class="sname"><i class="sw sam"></i>SAM</div>
+          <div class="big" id="accSam"></div>
+          <div class="sub" id="subSam"></div>
+        </div>
+        <div class="stat diff">
+          <div class="sname">SAM minus SGD</div>
+          <div class="big" id="diff"></div>
+          <div class="sub" id="subDiff"></div>
+        </div>
+      </div>
+      <p class="source" id="source"></p>
+    </div>
+
+    <section class="chart" aria-label="Accuracy as the error grows">
+      <div class="chead">
+        <h2 class="h">Accuracy of one noisy run as the error grows</h2>
+        <div class="legend">
+          <span><svg viewBox="0 0 32 16" aria-hidden="true"><line x1="0" y1="8" x2="32" y2="8" class="c-line c-sgd"/><circle cx="16" cy="8" r="5" class="c-dot-sgd"/></svg>SGD</span>
+          <span><svg viewBox="0 0 32 16" aria-hidden="true"><line x1="0" y1="8" x2="32" y2="8" class="c-line c-sam"/><rect x="11" y="3" width="10" height="10" class="c-dot-sam"/></svg>SAM</span>
+          <span><svg viewBox="0 0 32 16" aria-hidden="true"><circle cx="16" cy="8" r="5" class="c-open-sgd"/></svg>Held-out test set</span>
+          <span><svg viewBox="0 0 32 16" aria-hidden="true"><line x1="0" y1="8" x2="32" y2="8" class="c-ghost"/></svg>Other five settings, <span id="lgModel">SGD</span></span>
+        </div>
+      </div>
+      <div class="chartbox" id="chartBox"><svg id="chart" role="img" aria-label="Accuracy versus error size for SGD and SAM"></svg></div>
+    </section>
+
+    <section class="field" aria-label="Per-image outcomes">
+      <div class="chead">
+        <h2 class="h">500 validation images, one row per class</h2>
+        <span class="ramp-key">right in 0% <i class="ramp"></i> 100% of runs</span>
+      </div>
+      <div class="fgrid" id="fgrid"></div>
+      <p class="note" id="fieldNote"></p>
+    </section>
+  </main>
+
+  <section class="examples" aria-label="Six example images">
+    <div class="chead">
+      <h2 class="h">Six pictures up close</h2>
+      <span class="note mono" id="exCount"></span>
+    </div>
+    <p class="note">How often each class won. Ordered from the image SGD finds easiest to the one it gets wrong even without noise.</p>
+    <ol class="cards" id="cards"></ol>
+  </section>
+
+  <footer>
+    <span>Mechanism study with Gaussian error. It is not a prediction for any physical chip. One SGD/SAM training-seed pair, so intervals do not include training-seed variation.</span>
+    <span class="keys">Keys: M mechanism · L location · ← → error size · T training · F full screen</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const D = {"classes":["airplane","automobile","bird","cat","deer","dog","frog","horse","ship","truck"],"amplitudes":[0.01,0.03,0.1,0.3,1.0],"settings":[{"mech":"independent_transient","loc":"early"},{"mech":"independent_transient","loc":"middle"},{"mech":"independent_transient","loc":"late"},{"mech":"independent_transient","loc":"all"},{"mech":"spatially_shared_transient","loc":"all"},{"mech":"persistent_weight","loc":"all"}],"val":{"clean":{"sgd":{"acc":0.944,"chips":1,"reads":1,"images":500},"sam":{"acc":0.944,"chips":1,"reads":1,"images":500},"diff":{"est":0.0,"lo":-0.018,"hi":0.018,"conf":0.95}},"independent_transient.early.a0.01":{"sgd":{"acc":0.9435,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9415,"chips":1,"reads":4,"images":500},"diff":{"est":-0.002,"lo":-0.019,"hi":0.01601,"conf":0.95}},"independent_transient.early.a0.03":{"sgd":{"acc":0.9425,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9405,"chips":1,"reads":4,"images":500},"diff":{"est":-0.002,"lo":-0.0195,"hi":0.016,"conf":0.95}},"independent_transient.early.a0.1":{"sgd":{"acc":0.942,"chips":1,"reads":4,"images":500},"sam":{"acc":0.942,"chips":1,"reads":4,"images":500},"diff":{"est":0.0,"lo":-0.0165,"hi":0.01651,"conf":0.95}},"independent_transient.early.a0.3":{"sgd":{"acc":0.9065,"chips":1,"reads":4,"images":500},"sam":{"acc":0.8995,"chips":1,"reads":4,"images":500},"diff":{"est":-0.007,"lo":-0.02654,"hi":0.0105,"conf":0.95}},"independent_transient.early.a1":{"sgd":{"acc":0.1935,"chips":1,"reads":4,"images":500},"sam":{"acc":0.178,"chips":1,"reads":4,"images":500},"diff":{"est":-0.0155,"lo":-0.05501,"hi":0.0205,"conf":0.95}},"independent_transient.middle.a0.01":{"sgd":{"acc":0.9435,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9425,"chips":1,"reads":4,"images":500},"diff":{"est":-0.001,"lo":-0.01851,"hi":0.01701,"conf":0.95}},"independent_transient.middle.a0.03":{"sgd":{"acc":0.943,"chips":1,"reads":4,"images":500},"sam":{"acc":0.942,"chips":1,"reads":4,"images":500},"diff":{"est":-0.001,"lo":-0.0185,"hi":0.01701,"conf":0.95}},"independent_transient.middle.a0.1":{"sgd":{"acc":0.941,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9405,"chips":1,"reads":4,"images":500},"diff":{"est":-0.0005,"lo":-0.0175,"hi":0.0165,"conf":0.95}},"independent_transient.middle.a0.3":{"sgd":{"acc":0.9145,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9205,"chips":1,"reads":4,"images":500},"diff":{"est":0.006,"lo":-0.011,"hi":0.0215,"conf":0.95}},"independent_transient.middle.a1":{"sgd":{"acc":0.1255,"chips":1,"reads":4,"images":500},"sam":{"acc":0.2445,"chips":1,"reads":4,"images":500},"diff":{"est":0.119,"lo":0.094,"hi":0.1455,"conf":0.95}},"independent_transient.late.a0.01":{"sgd":{"acc":0.944,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9425,"chips":1,"reads":4,"images":500},"diff":{"est":-0.0015,"lo":-0.01851,"hi":0.0165,"conf":0.95}},"independent_transient.late.a0.03":{"sgd":{"acc":0.9435,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9405,"chips":1,"reads":4,"images":500},"diff":{"est":-0.003,"lo":-0.02001,"hi":0.01551,"conf":0.95}},"independent_transient.late.a0.1":{"sgd":{"acc":0.9415,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9395,"chips":1,"reads":4,"images":500},"diff":{"est":-0.002,"lo":-0.018,"hi":0.015,"conf":0.95}},"independent_transient.late.a0.3":{"sgd":{"acc":0.9335,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9335,"chips":1,"reads":4,"images":500},"diff":{"est":0.0,"lo":-0.01551,"hi":0.0165,"conf":0.95}},"independent_transient.late.a1":{"sgd":{"acc":0.481,"chips":1,"reads":4,"images":500},"sam":{"acc":0.511,"chips":1,"reads":4,"images":500},"diff":{"est":0.03,"lo":0.00449,"hi":0.05451,"conf":0.95}},"independent_transient.all.a0.01":{"sgd":{"acc":0.943,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9415,"chips":1,"reads":4,"images":500},"diff":{"est":-0.0015,"lo":-0.0185,"hi":0.017,"conf":0.95}},"independent_transient.all.a0.03":{"sgd":{"acc":0.943,"chips":1,"reads":4,"images":500},"sam":{"acc":0.941,"chips":1,"reads":4,"images":500},"diff":{"est":-0.002,"lo":-0.0185,"hi":0.01551,"conf":0.95}},"independent_transient.all.a0.1":{"sgd":{"acc":0.94,"chips":1,"reads":4,"images":500},"sam":{"acc":0.939,"chips":1,"reads":4,"images":500},"diff":{"est":-0.001,"lo":-0.01451,"hi":0.0125,"conf":0.95}},"independent_transient.all.a0.3":{"sgd":{"acc":0.8405,"chips":1,"reads":4,"images":500},"sam":{"acc":0.828,"chips":1,"reads":4,"images":500},"diff":{"est":-0.0125,"lo":-0.03101,"hi":0.0055,"conf":0.95}},"independent_transient.all.a1":{"sgd":{"acc":0.126,"chips":1,"reads":4,"images":500},"sam":{"acc":0.1285,"chips":1,"reads":4,"images":500},"diff":{"est":0.0025,"lo":-0.018,"hi":0.0235,"conf":0.95}},"spatially_shared_transient.all.a0.01":{"sgd":{"acc":0.9445,"chips":1,"reads":4,"images":500},"sam":{"acc":0.9405,"chips":1,"reads":4,"images":500},"diff":{"est":-0.004,"lo":-0.021,"hi":0.014,"conf":0.95}},"spatially_shared_transient.all.a0.03":{"sgd":{"acc":0.9445,"chips":1,"reads":4,"images":500},"sam":{"acc":0.942,"chips":1,"reads":4,"images":500},"diff":{"est":-0.0025,"lo":-0.018,"hi":0.01351,"conf":0.95}},"spatially_shared_transient.all.a0.1":{"sgd":{"acc":0.9235,"chips":1,"reads":4,"images":500},"sam":{"acc":0.929,"chips":1,"reads":4,"images":500},"diff":{"est":0.0055,"lo":-0.0095,"hi":0.02,"conf":0.95}},"spatially_shared_transient.all.a0.3":{"sgd":{"acc":0.5765,"chips":1,"reads":4,"images":500},"sam":{"acc":0.6305,"chips":1,"reads":4,"images":500},"diff":{"est":0.054,"lo":0.02999,"hi":0.07951,"conf":0.95}},"spatially_shared_transient.all.a1":{"sgd":{"acc":0.1095,"chips":1,"reads":4,"images":500},"sam":{"acc":0.1125,"chips":1,"reads":4,"images":500},"diff":{"est":0.003,"lo":-0.016,"hi":0.02101,"conf":0.95}},"persistent_weight.all.a0.01":{"sgd":{"acc":0.9435,"chips":4,"reads":1,"images":500},"sam":{"acc":0.9425,"chips":4,"reads":1,"images":500},"diff":{"est":-0.001,"lo":-0.01851,"hi":0.0175,"conf":0.95}},"persistent_weight.all.a0.03":{"sgd":{"acc":0.942,"chips":4,"reads":1,"images":500},"sam":{"acc":0.9435,"chips":4,"reads":1,"images":500},"diff":{"est":0.0015,"lo":-0.015,"hi":0.019,"conf":0.95}},"persistent_weight.all.a0.1":{"sgd":{"acc":0.938,"chips":4,"reads":1,"images":500},"sam":{"acc":0.9395,"chips":4,"reads":1,"images":500},"diff":{"est":0.0015,"lo":-0.01251,"hi":0.0175,"conf":0.95}},"persistent_weight.all.a0.3":{"sgd":{"acc":0.9055,"chips":4,"reads":1,"images":500},"sam":{"acc":0.9135,"chips":4,"reads":1,"images":500},"diff":{"est":0.008,"lo":-0.00501,"hi":0.0215,"conf":0.95}},"persistent_weight.all.a1":{"sgd":{"acc":0.193,"chips":4,"reads":1,"images":500},"sam":{"acc":0.2295,"chips":4,"reads":1,"images":500},"diff":{"est":0.0365,"lo":0.01399,"hi":0.059,"conf":0.95}}},"test":{"clean":{"sgd":{"acc":0.9307,"chips":1,"reads":1,"images":10000},"sam":{"acc":0.9367,"chips":1,"reads":1,"images":10000},"diff":{"est":0.006,"lo":0.0016,"hi":0.0103,"conf":0.95}},"independent_transient.early.a0.3":{"sgd":{"acc":0.87829,"chips":1,"reads":8,"images":10000},"sam":{"acc":0.8838,"chips":1,"reads":8,"images":10000},"diff":{"est":0.00551,"lo":0.00136,"hi":0.01001,"conf":0.95}},"independent_transient.middle.a0.3":{"sgd":{"acc":0.89531,"chips":1,"reads":8,"images":10000},"sam":{"acc":0.90931,"chips":1,"reads":8,"images":10000},"diff":{"est":0.014,"lo":0.0103,"hi":0.01756,"conf":0.95}},"independent_transient.late.a0.3":{"sgd":{"acc":0.91514,"chips":1,"reads":8,"images":10000},"sam":{"acc":0.92483,"chips":1,"reads":8,"images":10000},"diff":{"est":0.00969,"lo":0.00652,"hi":0.0128,"conf":0.95}},"independent_transient.all.a0.3":{"sgd":{"acc":0.80606,"chips":1,"reads":8,"images":10000},"sam":{"acc":0.80842,"chips":1,"reads":8,"images":10000},"diff":{"est":0.00236,"lo":-0.00097,"hi":0.00546,"conf":0.95}},"spatially_shared_transient.all.a0.3":{"sgd":{"acc":0.56194,"chips":1,"reads":8,"images":10000},"sam":{"acc":0.61206,"chips":1,"reads":8,"images":10000},"diff":{"est":0.05013,"lo":0.04591,"hi":0.05413,"conf":0.95}},"persistent_weight.all.a0.3":{"sgd":{"acc":0.88875,"chips":8,"reads":1,"images":10000},"sam":{"acc":0.89936,"chips":8,"reads":1,"images":10000},"diff":{"est":0.01061,"lo":0.00752,"hi":0.01345,"conf":0.95}}},"field":{"runs":{"clean":{"sgd":{"n":1,"k":"11111111111111111111111111111111111111111111111110111111111111111111111111111111111111111111111111101111111111111111111111111111111111111111111000000011111111111111111111111111111111111111111111110000111111111111111111111111111111111111111111111111001111111111111111111111111111111111111111111000000011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111100001111111111111111111111111111111111111111111111110011111111111111111111111111111111111111111111111111"},"sam":{"n":1,"k":"11111111111111111111111111111111111111111111101110111111111111111111111111111111111111111111111011101111111111111111111111111111111111111111111110100011111111111111111111111111111111111111111111111000111111111111111111111111111111111111111111111000001111111111111111111111111111111111111110101110110011111111111111111111111111111111111111011111011111111111111111111111111111111111111111111111111110001111111111111111111111111111111111111111111101111111111111111111111111111111111111111111111111111101"}},"independent_transient.early.a0.01":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444443000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444403440444444444444444444444444444444444444444444444044404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444444444000004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444402"}},"independent_transient.early.a0.03":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444420000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444443000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444403440444444444444444444444444444444444444442444444144404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444442444002004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444401"}},"independent_transient.early.a0.1":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444434300444444444444444444444444444444444444444444444444304444444444444444444444444444444444444444444310000044444444444444444444444444444444444444444444410000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444441021000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444443044444444444444444444444444444444444444444444444443"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444402440444444444444444444444444444444444444440444444143404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444441444003004444444444444444444444444444442444441440404440440044444444444444444444444444444444444444344444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444431"}},"independent_transient.early.a0.3":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444434444001000444444444444444444444444444444404444440444442021004444444444444444444444444444444444441044434010300044444444344444344444423444444344444244443242310000444444444444444444444444444444444444443444023444004444444444444444444434444444444422444444340031000444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444443443300004444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444141"},"sam":{"n":4,"k":"44444444444444442444444444444043042343434444104400444444444444444444444444444444414444440444442010004444444444444444444444424444444444440044434241401044444444444444444444434404444444424444444342434000444444444444444444444444444444444444444440144004004444444444444444444444444441340441441440414420400044444444444444444444444444444444444444444444444444444444444444444440444444442444344144344444444422204444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444344040"}},"independent_transient.early.a1":{"sgd":{"n":4,"k":"00000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000002401410431230010003003403421300111404300140020020001410004111022001420013300000324112300233030102200000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000024441434314044444444443424232223444244302000344240000000400000000000000000020000000000000000000000002442010200134401012104030244010002100000100130000040013000000320203000040004310122000100000011000000"},"sam":{"n":4,"k":"00000000000000000000000000000000000000000000000000110100000000000001002043000100000400000000040000000000000000000000000001102002000000040000040001000000000000000000000000100100000000400021000000003000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000034240313003001132430220401003420224004200100041040424244444343421424344444444444400443444404434444414220030000001000000003020000000000300000000000000040403002002330003000041004000000000201001002000000"}},"independent_transient.middle.a0.01":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444443000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444403440444444444444444444444444444444444444444444444044404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444444444000004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444404"}},"independent_transient.middle.a0.03":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444442000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444401440444444444444444444444444444444444444443444444144404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444444444001004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444404"}},"independent_transient.middle.a0.1":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444424444444444444444444444444444444444444444444100000044444444444444444444444444444444444444444444340000444444444444444444444444444444444444444444444430004444444444444444444444444444444444444444441010000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444443"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444411440444444444444444444444444444444444444442444444144404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444443444002004444444444444444444444444444443444441340404440440044444444444444444444444444444444444444144443044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444404"}},"independent_transient.middle.a0.3":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444443441443444444444444444444444444444444444444444444444343424444444444444444444444444444444444444344443101120044444444444444444444444444444444444444444444243220444444444444444444444444444433444444443221122200204444444444444443444444444444444444431340430100010044444444444444444444444444444444444444344434444132444444444444444444444444444444444444444443322400004444444444444444444444444444444444444434444440300044444444444444444444444444444444444444444444344342"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444441430444444444444444444444444444444444444443444444244414444444444444444444444444444434444444443444400300044444444444444444444444444444444444444444443344101444444444444444444444444444444444444414441444011004444444444444444344444444342443444441140404432440044444444444444444444444444444444444444244441144144444444444444444444444444444434444444444444444420004444444444444444444444444444444444444434444102021044444444444444444444444444444444444444444434244404"}},"independent_transient.middle.a1":{"sgd":{"n":4,"k":"42100302001030100002110010000120000010000002000000011000001000010000000000000000102100000000010000001130020000000020200000000000000040000000000001000044444444444444444444444444444444444434444434444444000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"},"sam":{"n":4,"k":"44444434444444424414431421323314130434444424311010444332304342423434123344400404404444410400043311002120010030000010000000001000000010000000000000000042444444444444444444444444334444444414344444444444000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000102000200002000030000000000000000000000000000"}},"independent_transient.late.a0.01":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444403440444444444444444444444444444444444444444444444044404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444444444000004444444444444444444444444444444444443440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444403"}},"independent_transient.late.a0.03":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444443000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444402440444444444444444444444444444444444444444444444044404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444442444000004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444403"}},"independent_transient.late.a0.1":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444434440444444444444444444444444444444444444444444444444314444444444444444444444444444444444444444444200000044444444444444444444444444444444444444444444240000444444444444444444444444444444444444444444444443004444444444444444444444444444444444444444413010000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444402440444444444444444444444444444444444444442444444144404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444443444000444444444444444444444444444444444444444441444001004444444444444444444444444444444444441440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444422"}},"independent_transient.late.a0.3":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444312240444444444444444444444444444444444444444444444334324444444444444444444444444444444444444444444431110044444444444444444444444444444444444444444444232000444444444444444444444444444444444444444443402442104444444444444444444444444444444444444423342021010044444444444444444444444444444444444444444443344320444444444444444444444444444444444444444433443410004444444444444444444444444444444444444444444444443144444444444444444444444444444444444444444444444143"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444443403431444444444444444444444444444444444444441444434444414444444444444444444444444444444444444444444440300044444444444444444444444424444444444444444443444000444444444444444444444444444444444444444442444001004444444444444444444444444444443444430340404440410044444444444444444444444444444444444444044444043244444444444444444444444444444444444444443444444440104444444444444444444444444444444444444444444424444444444444444444444444444444444444444444444444344221"}},"independent_transient.late.a1":{"sgd":{"n":4,"k":"00323303131124011100010003011202101110011001001010444344344444444442433344423332002224401424143224014444444444443444443414434044444444144342434402440043444444434234434443343334234334344442324344333222313303001121010000010010010000000020200000000000104444444333224232223222143212440213122203021231210000001000001000000000000000000000000000000000000000334002113130210000031130110300020000111001000100004444444444334343444434312334344444214432020332134144243244130333313101323231033111010022101202200000"},"sam":{"n":4,"k":"30141434300124020413421001000000010000112100000000444444344444341344444444302423230434430424233433424444444444434443344442424434414444143323324311331044444444434344444443444424344444343434444343443024124213022100201002001000100020000000000000000000003444424134333313134231031003321211000010222130311000000001001000000000001000000000000000000000000000432223001210003210120211020000022000000000000000004444444444444444444344344444444443324443224442443444443444120333234200432242133212222212423332010000"}},"independent_transient.all.a0.01":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444442000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444401440444444444444444444444444444444444444444444444144404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444442444001004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444404"}},"independent_transient.all.a0.03":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444100000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444443004444444444444444444444444444444444444444442000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444443401440444444444444444444444444444444444444443444444144404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444441444002004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444144444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444404"}},"independent_transient.all.a0.1":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444434322410444444444444444444444444444444444444444444444343404444444444444444444444444444444444444444444320100044444444444444444444444444444444444444444433330000444444444444444444444444444444444444444444434442104444444444444444444444444444444444444444442120000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444442144444444444444444444444444444444444444444444444443"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444433402420444444444444444444444444444444444444442444444144404444444444444444444444444444444444444444444440300044444444444444444444444444444444444444444344444000444444444444444444444444444444444444444441444013004444444444444444444444444444441444432440404440430044444444444444444444444444444444444444244443144444444444444444444444444444444444444444443444444441004444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444344323"}},"independent_transient.all.a0.3":{"sgd":{"n":4,"k":"44444444444442421444444334443442431324432423202111444444444444444444444444444434334434344443431112204444444444444444444444434444234344443012224023002044444444334344434434443444344433433143313333143242444444444434444334344444331443433434433321212342204444444444424234232434144321343233230432230120110244444444444444444444444432444443442333431213442333444434444444443442444344434434334333344432230300204444444444444444444444444444434444443443341444423344444444444444444444444444444444444444442343444341"},"sam":{"n":4,"k":"44444444442443433444444324243140230244333423301400444444444444444444444444434433444443342444443123404444444444444244443242424444414344433001224231110044444444423444444431442432134344444344332232134112444444244424444434444243431444124343403340223120204444444434433234343433044341442234330331412330310044444444444444343444444434444444444423242142341342444434444444444441444444444333344324342334231410304444444444444444444434444444443434332443443344124344444444444444444444444444444444444444443344243223"}},"independent_transient.all.a1":{"sgd":{"n":4,"k":"00001000100010000100010001000000010000000000000000131111210101112211121011012021132220112121111112100000000000000000000000000000000010010000000000000031020121122113210312022211041230231021113211221222000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000010000000000000000000000010010010001101110000000000000000000100000000000100000000001031322421232232222323333032023121013113110031131321"},"sam":{"n":4,"k":"21101030000011000111012213020110010001112010200001230424313223434342122224304331031333133232432133320000000000000000000000000000000000010000000000000001000001110112200110000200100010010011001000111000000000000000000000000000000000000000000000000000000000000010000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000100010000000100000001000000000000000000010000000000000000000000000000000000000000000000000000000000212101232122232212222110011321123003000021130120"}},"spatially_shared_transient.all.a0.01":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444100000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444443100000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444401440444444444444444444444444444444444444444444444244404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444442444001004444444444444444444444444444444444441440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444402"}},"spatially_shared_transient.all.a0.03":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444434430444444444444444444444444444444444444444444444444414444444444444444444444444444444444444444444210000044444444444444444444444444444444444444444444330000444444444444444444444444444444444444444444444443004444444444444444444444444444444444444444433120000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444441044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444401440444444444444444444444444444444444444443444444244414444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444440444002004444444444444444444444444444443444441440404440440044444444444444444444444444444444444444344444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444414444444444444444444444444444444444444444444444444444412"}},"spatially_shared_transient.all.a0.1":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444434434113221444444444444444444444444444444444444444444444324324444444444444444444444444444444444444443444131200044444444444444444444444444444444444444434332131010444444444444444444444444444444444444443442432321104444444444444444444444444444444444434333433230000044444444444444444444444444444444444444444444444344444444444444444444444444444444444444444444433410004444444444444444444444444444444444444444443444422044444444444444444444444444444444444444444432423340"},"sam":{"n":4,"k":"44444444444444443444444444444444444444444444411421444444444444444444444444444444444444443444444233424444444444444444444444444444444444344444444432200044444444444444444444444434344444444444444344334101444444444434444444444444444444444444414440434032104444444444444444444444444444442444421340404430420044444444444444444444444444444444444444244442144143444444444444444444444444444444444444443444434441104444444444444444444444444444444444444444444434434344444444444444444444444444444444444444444444343112"}},"spatially_shared_transient.all.a0.3":{"sgd":{"n":4,"k":"34442333411433312433432314211332221223031312011101444343424342424234334134333432123322332343331223114344443341233344242343203133131342242101114231230041244423330324123310220312131231330241112212100120433314113422333212133211311321212133401201402100203342243322222131332221144231340012201110101020100044442343222141232132433222202342023331311111132030433422222242132441324421122221242213321212122302004344344224434244443434333334343321113320130231102143344444334444444342344434423222243133313011110110"},"sam":{"n":4,"k":"44224434412423331344432414242131130122130202111000444444333444324444343344424423223334330424323133424443434334233244332232204342312433114221124112121041243443411444233420232301223243231334223012134112434334132433334304133333122322301132301230301021003444443333310222433112134131232122110201110210210244243234322232242142234422121233311321121200142113433424323423423441442413342221044312112131220310004444442334434444433344334433312434221332121311202244444444342444443233343444244433243344343242121011"}},"spatially_shared_transient.all.a1":{"sgd":{"n":4,"k":"00010110100200000110100002001001000101020001010100110010010100002111002010110001020010000130211011000011001010010102011210000131100300022001011200100011101221111201202110010210131301020010001300001110000000010010000001010000001000010000000000000100100000010110000010011000102111010000001100000110000000011000000000100000000000000000000100000000000010010011000000010000001000000002000102020000011210010111010000000000001100000221001100001000021010001000010111211010120000010311201100001001010001000010"},"sam":{"n":4,"k":"21100110110200110011010102011101000001100100100000000102201101003221110102203121010002220110100110120100000101102110011200101110002100001011100001001010000102210203120101212100121121010020002000112110000100000000000000000000000100110000100000000010000110001010000110000000021000100200100100000000010000000000000000000000001010000100001200000000100010010010000000100000010000000101000000001000010011010001110011201000000000000220100110000010000110002001011001000100220000110120011110111200001010100010"}},"persistent_weight.all.a0.01":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444444004444444444444444444444444444444444444444443000000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444402440444444444444444444444444444444444444444444444344404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444444444000004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444044444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444402"}},"persistent_weight.all.a0.03":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444444440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444000000044444444444444444444444444444444444444444444440000444444444444444444444444444444444444444444444442004444444444444444444444444444444444444444432100000044444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444400004444444444444444444444444444444444444444444444440044444444444444444444444444444444444444444444444444"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444412440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444444444000444444444444444444444444444444444444444442444002004444444444444444444444444444444444442440404440440044444444444444444444444444444444444444144444044444444444444444444444444444444444444444444444444440004444444444444444444444444444444444444444444404444444444444444444444444444444444444444444444444444401"}},"persistent_weight.all.a0.1":{"sgd":{"n":4,"k":"44444444444444444444444444444444444444444444442340444444444444444444444444444444444444444444444444424444444444444444444444444444444444444444443100000044444444444444444444444444444444444444444344442000444444444444444444444444444444444444444444444442004444444444444444444444444444444444444344423210000044444444444444444444444444444444444444444444444332444444444444444444444444444444444444444444444300004444444444444444444444444444444444444444444444441044444444444444444444444444444444444444444444443431"},"sam":{"n":4,"k":"44444444444444444444444444444444444444444444412440444444444444444444444444444444444444444444444444404444444444444444444444444444444444444444444440400044444444444444444444444444444444444444444344444000444444444444444444444444444444444444444442444002004444444444444444444444444444444444442240404440430044444444444444444444444444444444444444244442044444444444444444444444444444444444444444443444444440004444444444444444444444444444444444444444444414444444444444444444444444444444444444444444444444344201"}},"persistent_weight.all.a0.3":{"sgd":{"n":4,"k":"44444444444444443444444444444444444444434434332241444444444444444444444444444444444444444444444444434444444444444444444444444344444444344223443210400044444444444444444444434444444444344443233344332112444444444444444444444444434444343444422243422222004444444444444444444444444434444424342122434320000044444444444444444344444444434444444444244442344333444444444444444444444444444424443444434334244001004444444444444444444444444444444444344444444444443144444444444444444444444444444444344444444233140301"},"sam":{"n":4,"k":"44444444444444443444444434444444444334434444412421444444444444444444444444444444444444444444444444224444444444444444444442444344444444444434444321300044444444424444444444444444444444443434344344444101444444444444444444444444444444444444424442444112004444444444444444444444244343443424321030424431121044444444444444444444444444444444434344143432044344444444444444444444443444444444444434440443443422004444444444444444444444444444444444444444444434323244444444444444444444444444444444444444444434142202"}},"persistent_weight.all.a1":{"sgd":{"n":4,"k":"12122100100011001101111000101010020101100111101111344322211211132322222322303211212123301102132112222132113011010000012101110000111100100110000100100010121101100100210111201000011111000012020110030121012131012010001011011000110111100011110000000100011011010000210012020100101003010000101010111100010100001000000000020000000000000000000000000000010000001000002010110000011000001000020110000001000000002222211222121212321212321123333321113141121221222200110001100110100001011002001002000010100000001021"},"sam":{"n":4,"k":"21102130110121101201121300202112111000213121211000132310110323202411002243002302003121300112022212011120010000000010011000101010100000101000010010000011222111000000102102200110020020102100001000010111000120100000001010010120010000000000000000000000004012212311203111232112112001113213221021211220111111001111211211131011200111200021100101000000000101111011111210110110000011010110101111101001111110012223223222221212222232322332223322022222322231222201110112020011010000101110121011100000020000000001"}}}},"examples":{"images":["data:image/png;base64,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","data:image/png;base64,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","data:image/png;base64,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","data:image/png;base64,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","data:image/png;base64,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","data:image/png;base64,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"],"labels":[2,1,9,7,0,4],"ids":["train:06448","train:25150","train:45792","train:03854","train:18545","train:32130"],"runs":{"clean":{"sgd":{"src":"examples","chips":1,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"examples","chips":1,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.early.a0.01":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.early.a0.03":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.early.a0.1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.early.a0.3":{"sgd":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.041,0.0,0.0,0.959,0.0,0.0],[0.7969,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.2031],[0.0,0.0,0.0059,0.9941,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.457,0.0039,0.0,0.5391,0.0,0.0],[0.5586,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.4414],[0.0,0.0,0.9961,0.0039,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.early.a1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,0.5,0.5,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.5,0.0,0.0,0.5,0.0,0.0,0.0],[0.0,0.0,0.75,0.0,0.0,0.0,0.25,0.0,0.0,0.0],[0.0,0.0,0.25,0.25,0.0,0.0,0.5,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[0.0,0.0,0.0,0.5,0.0,0.0,0.0,0.5,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0]]}},"independent_transient.middle.a0.01":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.middle.a0.03":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.middle.a0.1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.75,0.25,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.middle.a0.3":{"sgd":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.043,0.0,0.0059,0.9512,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0039,0.0,0.9961,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.002,0.0,0.6406,0.3574,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.middle.a1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,0.25,0.75,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.5,0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.25,0.0,0.75,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.late.a0.01":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.late.a0.03":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.late.a0.1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.late.a0.3":{"sgd":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[0.9805,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0195],[0.0,0.0,0.0059,0.9941,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.4414,0.5586,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.late.a1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.75,0.0,0.0,0.0,0.0,0.0,0.25],[0.0,0.0,0.25,0.25,0.0,0.5,0.0,0.0,0.0,0.0],[0.25,0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.25,0.0],[0.0,0.0,0.25,0.75,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.75,0.0,0.0,0.0,0.0,0.0,0.0,0.25,0.0],[0.0,0.0,0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.5],[0.0,0.0,0.25,0.5,0.0,0.25,0.0,0.0,0.0,0.0],[0.25,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.75,0.0],[0.0,0.0,0.25,0.75,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.all.a0.01":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.all.a0.03":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.all.a0.1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"independent_transient.all.a0.3":{"sgd":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.998,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.002],[0.0,0.0,0.0,0.002,0.0,0.0,0.0,0.0,0.0,0.998],[0.0059,0.0137,0.0117,0.0098,0.1309,0.0254,0.0,0.7676,0.002,0.0332],[0.5938,0.002,0.0098,0.0,0.0,0.0,0.0,0.002,0.0,0.3926],[0.0059,0.0,0.2305,0.6875,0.0254,0.0098,0.0,0.002,0.0098,0.0293]]},"sam":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0215,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.9785],[0.0,0.0215,0.0039,0.0215,0.1602,0.1895,0.0,0.4473,0.002,0.1543],[0.5469,0.002,0.0,0.0,0.0,0.0,0.0,0.0117,0.0039,0.4355],[0.002,0.002,0.6699,0.2344,0.0352,0.0078,0.0,0.0137,0.0137,0.0215]]}},"independent_transient.all.a1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.5,0.0,0.25,0.0,0.0,0.0,0.25,0.0,0.0],[0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.25,0.25],[0.0,0.25,0.0,0.25,0.0,0.0,0.0,0.0,0.0,0.5],[0.0,0.0,0.25,0.25,0.0,0.0,0.0,0.0,0.0,0.5],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.25,0.25,0.0,0.0,0.0,0.0,0.0,0.0,0.25,0.25]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.25,0.75,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.25,0.75,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.25,0.25,0.0,0.25,0.0,0.0,0.0,0.25,0.0,0.0],[0.0,0.75,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.25],[0.25,0.25,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.5],[0.75,0.25,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"spatially_shared_transient.all.a0.01":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"spatially_shared_transient.all.a0.03":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"spatially_shared_transient.all.a0.1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[0.75,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.25],[0.0,0.0,0.25,0.75,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.75,0.25,0.0,0.0,0.0,0.0,0.0,0.0]]}},"spatially_shared_transient.all.a0.3":{"sgd":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,0.9902,0.0039,0.0,0.0039,0.0,0.0,0.002,0.0],[0.002,0.875,0.002,0.0039,0.0,0.0,0.0,0.002,0.0391,0.0762],[0.0156,0.0469,0.0059,0.0684,0.002,0.0,0.0,0.0,0.0176,0.8438],[0.082,0.0566,0.0957,0.0996,0.0996,0.1172,0.0039,0.3184,0.0508,0.0762],[0.498,0.0488,0.0957,0.0039,0.0098,0.0039,0.0,0.0469,0.0352,0.2578],[0.0977,0.0098,0.2422,0.4609,0.0547,0.0215,0.0,0.0391,0.0469,0.0273]]},"sam":{"src":"examples","chips":1,"reads":512,"win":[[0.0,0.0,0.998,0.002,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.9121,0.0,0.0,0.0,0.0,0.0,0.002,0.041,0.0449],[0.0078,0.1211,0.0,0.0293,0.0,0.002,0.0,0.0,0.0059,0.834],[0.041,0.0293,0.082,0.1211,0.1348,0.1445,0.0117,0.3047,0.0371,0.0938],[0.5039,0.0488,0.082,0.0156,0.0039,0.0059,0.0,0.0859,0.0703,0.1836],[0.1035,0.0039,0.3223,0.3086,0.0547,0.0508,0.0039,0.0684,0.0488,0.0352]]}},"spatially_shared_transient.all.a1":{"sgd":{"src":"validation","chips":1,"reads":4,"win":[[0.25,0.25,0.0,0.0,0.0,0.25,0.0,0.25,0.0,0.0],[0.0,0.25,0.0,0.0,0.0,0.0,0.0,0.0,0.5,0.25],[0.0,0.5,0.25,0.0,0.0,0.0,0.0,0.0,0.0,0.25],[0.0,0.0,0.25,0.25,0.25,0.0,0.25,0.0,0.0,0.0],[0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.25,0.25],[0.25,0.25,0.25,0.0,0.0,0.0,0.0,0.25,0.0,0.0]]},"sam":{"src":"validation","chips":1,"reads":4,"win":[[0.0,0.75,0.0,0.25,0.0,0.0,0.0,0.0,0.0,0.0],[0.25,0.5,0.0,0.25,0.0,0.0,0.0,0.0,0.0,0.0],[0.5,0.25,0.0,0.25,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.25,0.25,0.5,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.25,0.0,0.0,0.25,0.25,0.0,0.25],[0.5,0.0,0.25,0.0,0.0,0.0,0.0,0.0,0.25,0.0]]}},"persistent_weight.all.a0.01":{"sgd":{"src":"validation","chips":4,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":4,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"persistent_weight.all.a0.03":{"sgd":{"src":"validation","chips":4,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":4,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]}},"persistent_weight.all.a0.1":{"sgd":{"src":"validation","chips":4,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"validation","chips":4,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.75,0.25,0.0,0.0,0.0,0.0,0.0,0.0]]}},"persistent_weight.all.a0.3":{"sgd":{"src":"examples","chips":128,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0],[0.8594,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.1406],[0.0391,0.0,0.0938,0.8672,0.0,0.0,0.0,0.0,0.0,0.0]]},"sam":{"src":"examples","chips":128,"reads":1,"win":[[0.0,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0],[0.0,0.0,0.0,0.0,0.0391,0.0234,0.0,0.9375,0.0,0.0],[0.875,0.0,0.0,0.0,0.0,0.0,0.0,0.0391,0.0,0.0859],[0.0,0.0,0.6562,0.3047,0.0391,0.0,0.0,0.0,0.0,0.0]]}},"persistent_weight.all.a1":{"sgd":{"src":"validation","chips":4,"reads":1,"win":[[0.0,0.0,0.5,0.0,0.25,0.25,0.0,0.0,0.0,0.0],[0.0,0.75,0.0,0.0,0.0,0.25,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.25,0.0,0.25,0.0,0.0,0.0,0.5],[0.0,0.25,0.0,0.0,0.25,0.25,0.0,0.0,0.25,0.0],[0.0,0.25,0.0,0.0,0.0,0.25,0.0,0.0,0.5,0.0],[0.0,0.25,0.25,0.0,0.25,0.0,0.0,0.0,0.25,0.0]]},"sam":{"src":"validation","chips":4,"reads":1,"win":[[0.0,0.0,0.25,0.0,0.0,0.0,0.25,0.0,0.25,0.25],[0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.75,0.0,0.0,0.0,0.0,0.0,0.25,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.5,0.0,0.25,0.25,0.0],[0.25,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.25,0.0],[0.0,0.0,0.0,0.0,0.0,0.25,0.25,0.25,0.25,0.0]]}}}}};
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const AMPS = [0].concat(D.amplitudes);
+  const AMP_LABEL = a => a === 0 ? "Off" : Math.round(a * 100) + "%";
+  const MECHS = {
+    independent_transient: "Independent noise",
+    spatially_shared_transient: "Spatially shared noise",
+    persistent_weight: "Persistent weight error",
+  };
+  const LOCS = {
+    early: { layers: [0, 1], phrase: "in the early layers (conv1–2)" },
+    middle: { layers: [2, 3], phrase: "in the middle layers (conv3–4)" },
+    late: { layers: [4, 5], phrase: "in the late layers (conv5–6)" },
+    all: { layers: [0, 1, 2, 3, 4, 5, 6], phrase: "in every layer" },
+  };
+  const MECH_ORDER = Object.keys(MECHS);
+  const LOC_ORDER = Object.keys(LOCS);
+  const S = { mech: "independent_transient", loc: "all", ai: 4, model: "sgd" };
+
+  const sid = (mech, loc, a) => a === 0 ? "clean" : mech + "." + loc + ".a" + a;
+  const current = () => sid(S.mech, S.loc, AMPS[S.ai]);
+
+  /* ---------- blue-to-gold scale, interpolated in OKLab ---------- */
+  const STOPS = [[0, "#043673"], [0.4, "#008F91"], [0.6, "#009647"], [1, "#FDB515"]];
+  const toLin = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  const toSrgb = c => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  function hexToLab(h) {
+    const [r, g, b] = [1, 3, 5].map(i => toLin(parseInt(h.slice(i, i + 2), 16) / 255));
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+  }
+  function labToCss([L, A, B]) {
+    const l = Math.pow(L + 0.3963377774 * A + 0.2158037573 * B, 3);
+    const m = Math.pow(L - 0.1055613458 * A - 0.0638541728 * B, 3);
+    const s = Math.pow(L - 0.0894841775 * A - 1.2914855480 * B, 3);
+    const rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+                 -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+                 -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+    return "rgb(" + rgb.map(c => Math.round(255 * Math.min(1, Math.max(0, toSrgb(c))))).join(",") + ")";
+  }
+  const STOP_LAB = STOPS.map(([t, h]) => [t, hexToLab(h)]);
+  function ramp(t) {
+    t = Math.min(1, Math.max(0, t));
+    let i = 0;
+    while (i < STOP_LAB.length - 2 && t > STOP_LAB[i + 1][0]) i++;
+    const [t0, a] = STOP_LAB[i], [t1, b] = STOP_LAB[i + 1];
+    const u = (t - t0) / (t1 - t0);
+    return labToCss(a.map((v, k) => v + (b[k] - v) * u));
+  }
+
+  /* ---------- formatting ---------- */
+  const MINUS = "−";
+  const signed = (v, d = 1) => (v >= 0 ? "+" : MINUS) + Math.abs(v).toFixed(d);
+  const fmtInt = n => n.toLocaleString("en-US");
+  const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+  function runsPhrase(chips, reads) {
+    if (chips * reads === 1) return "1 exact run";
+    return chips > 1 ? plural(chips, "simulated chip") : plural(reads, "noisy run");
+  }
+
+  /* ---------- controls ---------- */
+  const ampSeg = $("#ampSeg");
+  AMPS.forEach((a, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "radio"); b.id = "amp-" + i; b.dataset.ai = i;
+    b.textContent = AMP_LABEL(a);
+    ampSeg.appendChild(b);
+  });
+
+  $$(".mech button").forEach(b => b.addEventListener("click", () => setMech(b.dataset.mech)));
+  $$("#locSeg button").forEach(b => b.addEventListener("click", () => setLoc(b.dataset.loc)));
+  $$("#ampSeg button").forEach(b => b.addEventListener("click", () => { S.ai = +b.dataset.ai; render(); }));
+  $$(".train button").forEach(b => b.addEventListener("click", () => { S.model = b.dataset.model; render(); }));
+
+  function setMech(m) {
+    S.mech = m;
+    if (m !== "independent_transient") S.loc = "all";
+    render();
+  }
+  function setLoc(l) {
+    if (S.mech !== "independent_transient" && l !== "all") return;
+    S.loc = l; render();
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === "arrowright") { S.ai = Math.min(AMPS.length - 1, S.ai + 1); render(); e.preventDefault(); }
+    else if (k === "arrowleft") { S.ai = Math.max(0, S.ai - 1); render(); e.preventDefault(); }
+    else if (k === "m") setMech(MECH_ORDER[(MECH_ORDER.indexOf(S.mech) + 1) % MECH_ORDER.length]);
+    else if (k === "l") { if (S.mech === "independent_transient") setLoc(LOC_ORDER[(LOC_ORDER.indexOf(S.loc) + 1) % LOC_ORDER.length]); }
+    else if (k === "t" || k === "s") { S.model = S.model === "sgd" ? "sam" : "sgd"; render(); }
+    else if (k === "f") {
+      const el = document.documentElement;
+      const p = document.fullscreenElement ? document.exitFullscreen() : (el.requestFullscreen ? el.requestFullscreen() : null);
+      if (p && p.catch) p.catch(() => {});
+    }
+  });
+
+  /* ---------- network diagram ---------- */
+  const NS = "http://www.w3.org/2000/svg";
+  const netBlocks = [];
+  (function buildNet() {
+    const svg = $("#net");
+    const spec = [[64, 32], [64, 32], [128, 16], [128, 16], [256, 8], [256, 8], [10, 1]];
+    const names = ["1", "2", "3", "4", "5", "6", "fc"];
+    const cy = 16;
+    let x = 20;
+    const wire = document.createElementNS(NS, "line");
+    wire.setAttribute("class", "wire");
+    wire.setAttribute("x1", 8); wire.setAttribute("y1", cy);
+    svg.appendChild(wire);
+    const img = document.createElementNS(NS, "image");
+    img.setAttribute("href", D.examples.images[1]);
+    img.setAttribute("x", 0); img.setAttribute("y", cy - 7); img.setAttribute("width", 14); img.setAttribute("height", 14);
+    svg.appendChild(img);
+    const lbl = (tx, text) => {
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("x", tx); t.setAttribute("y", 38); t.setAttribute("text-anchor", "middle");
+      t.textContent = text; svg.appendChild(t);
+    };
+    lbl(7, "input");
+    spec.forEach(([ch, sp], i) => {
+      const w = i === 6 ? 4.5 : 4 + ch / 256 * 12;
+      const h = i === 6 ? 8 : { 32: 28, 16: 21, 8: 14 }[sp];
+      if (i === 2 || i === 4 || i === 6) x += 5;
+      const r = document.createElementNS(NS, "rect");
+      r.setAttribute("x", x); r.setAttribute("y", cy - h / 2); r.setAttribute("width", w); r.setAttribute("height", h);
+      r.setAttribute("rx", .6); r.setAttribute("class", "blk");
+      const title = document.createElementNS(NS, "title");
+      title.textContent = i === 6 ? "classifier, 256 → 10" : "conv" + (i + 1) + ", " + ch + " channels at " + sp + "×" + sp;
+      r.appendChild(title);
+      r.addEventListener("click", () => {
+        if (i === 6) setLoc("all"); else setLoc(LOC_ORDER[Math.floor(i / 2)]);
+      });
+      svg.appendChild(r);
+      netBlocks.push(r);
+      lbl(x + w / 2, names[i]);
+      x += w + 2.5;
+    });
+    wire.setAttribute("x2", x); wire.setAttribute("y2", cy);
+  })();
+
+  /* ---------- mechanism glyphs: transient noise flickers, stored-weight error holds still ---------- */
+  (function glyphs() {
+    const N = 8;
+    let seed = 20260929;
+    const rand = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const randn = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+    const fixed = Array.from({ length: N * N }, () => randn(rand));
+    const canv = $$("canvas[data-glyph]");
+    function paint(c, vals) {
+      const ctx = c.getContext("2d");
+      const im = ctx.createImageData(N, N);
+      vals.forEach((v, i) => {
+        const g = Math.round(Math.min(235, Math.max(25, 150 - 58 * v)));
+        im.data.set([g, g, g + 2, 255], i * 4);
+      });
+      ctx.putImageData(im, 0, 0);
+    }
+    function frame() {
+      canv.forEach(c => {
+        const kind = c.dataset.glyph;
+        let vals;
+        if (kind === "persistent") vals = fixed;
+        else if (kind === "shared") { const z = randn(Math.random); vals = fixed.map(() => Math.sqrt(0.75) * z + 0.5 * randn(Math.random)); }
+        else vals = fixed.map(() => randn(Math.random));
+        paint(c, vals);
+      });
+    }
+    frame();
+    if (!REDUCED) setInterval(() => { if (!document.hidden) frame(); }, 420);
+  })();
+
+  /* ---------- 500-image field ---------- */
+  const tiles = [];
+  (function buildField() {
+    const g = $("#fgrid");
+    const frag = document.createDocumentFragment();
+    D.classes.forEach(name => {
+      const l = document.createElement("span");
+      l.className = "cls"; l.textContent = name;
+      frag.appendChild(l);
+      for (let j = 0; j < 50; j++) {
+        const t = document.createElement("i");
+        t.className = "tile";
+        frag.appendChild(t); tiles.push(t);
+      }
+    });
+    g.appendChild(frag);
+  })();
+
+  /* ---------- example cards ---------- */
+  const cards = [];
+  (function buildCards() {
+    const ol = $("#cards");
+    D.examples.images.forEach((src, j) => {
+      const li = document.createElement("li");
+      li.className = "card";
+      const truth = D.classes[D.examples.labels[j]];
+      li.innerHTML =
+        '<img class="thumb" alt="' + truth + ', validation image ' + D.examples.ids[j] + '" src="' + src + '">' +
+        '<div><div class="ctitle"><b>' + truth + '</b><span class="cacc"></span></div><div class="bars"></div></div>';
+      const bars = li.querySelector(".bars");
+      const rows = [];
+      for (let r = 0; r < 3; r++) {
+        const nm = document.createElement("span"); nm.className = "nm";
+        const bar = document.createElement("span"); bar.className = "bar";
+        const fill = document.createElement("i"); fill.style.width = "0%"; bar.appendChild(fill);
+        const v = document.createElement("span"); v.className = "v";
+        bars.append(nm, bar, v);
+        rows.push({ nm, bar, fill, v });
+      }
+      ol.appendChild(li);
+      cards.push({ img: li.querySelector(".thumb"), acc: li.querySelector(".cacc"), rows });
+    });
+  })();
+
+  /* ---------- animated numbers ---------- */
+  const shown = {};
+  function tween(el, key, target, fmt) {
+    const from = shown[key] === undefined ? target : shown[key];
+    shown[key] = target;
+    cancelAnimationFrame(el._raf);
+    if (REDUCED || from === target) { el.innerHTML = fmt(target); return; }
+    const t0 = performance.now(), dur = 420;
+    const step = now => {
+      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.innerHTML = fmt(from + (target - from) * e);
+      if (k < 1) el._raf = requestAnimationFrame(step);
+    };
+    el._raf = requestAnimationFrame(step);
+  }
+
+  /* ---------- chart ---------- */
+  function drawChart() {
+    const box = $("#chartBox"), svg = $("#chart");
+    const W = box.clientWidth, H = box.clientHeight;
+    if (!W || !H) return;
+    const fs = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const m = { l: fs * 2.7, r: fs * 1.4, t: fs * .6, b: fs * 1.7 };
+    const pw = W - m.l - m.r, ph = H - m.t - m.b, pad = fs * 1.1;
+    const U = [0, 1.4, 2.4, 3.4, 4.4, 5.4], UMAX = 5.4;
+    const x = i => m.l + pad + U[i] / UMAX * (pw - 2 * pad);
+    const y = v => m.t + (1 - v) * ph;
+    const tick = fs * .68;
+    let s = "";
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+
+    const bw = Math.min(fs * 3, (x(2) - x(1)) * .72);
+    s += '<rect class="c-band" x="' + (x(S.ai) - bw / 2) + '" y="' + m.t + '" width="' + bw + '" height="' + ph + '" rx="3"/>';
+    [0.25, 0.5, 0.75, 1].forEach(v => { s += '<line class="c-grid" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>'; });
+    s += '<line class="c-base" x1="' + m.l + '" x2="' + (W - m.r) + '" y1="' + y(0) + '" y2="' + y(0) + '"/>';
+    [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+      s += '<text class="c-tick" font-size="' + tick + '" x="' + (m.l - fs * .45) + '" y="' + (y(v) + tick * .35) + '" text-anchor="end">' + Math.round(v * 100) + '%</text>';
+    });
+    AMPS.forEach((a, i) => {
+      s += '<text class="c-tick' + (i === S.ai ? ' is-on' : '') + '" font-size="' + tick + '" x="' + x(i) + '" y="' + (y(0) + fs * 1.25) + '" text-anchor="middle">' + AMP_LABEL(a) + '</text>';
+    });
+    const mid = (x(0) + x(1)) / 2, b0 = y(0);
+    s += '<rect class="c-mask" x="' + (mid - 5) + '" y="' + (b0 - 2) + '" width="10" height="4"/>';
+    s += '<line class="c-break" x1="' + (mid - 7) + '" y1="' + (b0 + 5) + '" x2="' + (mid - 1) + '" y2="' + (b0 - 5) + '"/>';
+    s += '<line class="c-break" x1="' + (mid + 1) + '" y1="' + (b0 + 5) + '" x2="' + (mid + 7) + '" y2="' + (b0 - 5) + '"/>';
+
+    const series = (mech, loc, model) => AMPS.map(a => D.val[sid(mech, loc, a)][model].acc);
+    const path = vals => vals.slice(1).map((v, k) => (k ? "L" : "M") + x(k + 1).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+    const bridge = vals => "M" + x(0) + " " + y(vals[0]) + " L" + x(1) + " " + y(vals[1]);
+
+    D.settings.forEach(st => {
+      if (st.mech === S.mech && st.loc === S.loc) return;
+      const v = series(st.mech, st.loc, S.model);
+      s += '<path class="c-ghost" d="' + path(v) + '"><title>' + MECHS[st.mech] + ' ' + LOCS[st.loc].phrase + '</title></path>';
+    });
+
+    const r = fs * .34, q = fs * .62, off = fs * .8;
+    const marker = (model, cx, cy, open, label) => {
+      const cls = (open ? "c-open-" : "c-dot-") + model;
+      const t = "<title>" + label + "</title>";
+      return model === "sgd"
+        ? '<circle class="' + cls + '" cx="' + cx + '" cy="' + cy + '" r="' + r + '">' + t + '</circle>'
+        : '<rect class="' + cls + '" x="' + (cx - q / 2) + '" y="' + (cy - q / 2) + '" width="' + q + '" height="' + q + '">' + t + '</rect>';
+    };
+    const order = S.model === "sgd" ? ["sam", "sgd"] : ["sgd", "sam"];
+    order.forEach(model => {
+      const v = series(S.mech, S.loc, model);
+      s += '<path class="c-bridge c-' + model + '" d="' + bridge(v) + '"/>';
+      s += '<path class="c-line c-' + model + '" d="' + path(v) + '"/>';
+    });
+    order.forEach(model => {
+      const v = series(S.mech, S.loc, model);
+      v.forEach((val, i) => {
+        const e = D.val[sid(S.mech, S.loc, AMPS[i])][model];
+        s += marker(model, x(i), y(val), false, model.toUpperCase() + " · " + AMP_LABEL(AMPS[i]) + " · " + (val * 100).toFixed(1) + "% on " + fmtInt(e.images) + " validation images × " + runsPhrase(e.chips, e.reads));
+      });
+      AMPS.forEach((a, i) => {
+        const t = D.test[sid(S.mech, S.loc, a)];
+        if (!t) return;
+        const e = t[model];
+        s += marker(model, x(i) + off, y(e.acc), true, model.toUpperCase() + " · " + AMP_LABEL(a) + " · " + (e.acc * 100).toFixed(1) + "% on " + fmtInt(e.images) + " test images × " + runsPhrase(e.chips, e.reads));
+      });
+    });
+    svg.innerHTML = s;
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    const id = current();
+    const a = AMPS[S.ai];
+
+    // controls
+    $$(".mech button").forEach(b => b.setAttribute("aria-checked", b.dataset.mech === S.mech));
+    $$("#locSeg button").forEach(b => {
+      b.setAttribute("aria-checked", b.dataset.loc === S.loc);
+      b.disabled = S.mech !== "independent_transient" && b.dataset.loc !== "all";
+    });
+    $$("#ampSeg button").forEach(b => b.setAttribute("aria-checked", +b.dataset.ai === S.ai));
+    $$(".train button").forEach(b => b.setAttribute("aria-checked", b.dataset.model === S.model));
+    const on = LOCS[S.loc].layers;
+    netBlocks.forEach((r, i) => r.classList.toggle("on", a !== 0 && on.includes(i)));
+    $("#locNote").textContent = S.mech === "independent_transient"
+      ? "Two convolutions per group, so each group has the same number of noise sources."
+      : "This mechanism was measured with error in every layer only.";
+    $("#ampNote").textContent = S.mech === "persistent_weight"
+      ? "Weight error σ as a share of each layer's stored-weight RMS."
+      : "Noise σ as a share of each layer's clean output RMS.";
+
+    // condition headline
+    $("#condition").innerHTML = a === 0
+      ? "No added error. The network runs exactly."
+      : MECHS[S.mech] + " " + LOCS[S.loc].phrase + ' <span class="amp">at ' + AMP_LABEL(a) + (S.mech === "persistent_weight" ? " of weight RMS" : " of output RMS") + "</span>";
+
+    // numbers: the held-out test set where it was run, otherwise the validation sweep
+    const isTest = !!D.test[id];
+    const P = isTest ? D.test : D.val;
+    const row = P[id], clean = P.clean;
+    const pctHtml = v => v.toFixed(1) + "<small>%</small>";
+    tween($("#accSgd"), "sgd", row.sgd.acc * 100, pctHtml);
+    tween($("#accSam"), "sam", row.sam.acc * 100, pctHtml);
+    tween($("#diff"), "diff", row.diff.est * 100, v => signed(v) + "<small> points</small>");
+    ["sgd", "sam"].forEach(model => {
+      const drop = (clean[model].acc - row[model].acc) * 100;
+      $("#sub" + (model === "sgd" ? "Sgd" : "Sam")).textContent = a === 0
+        ? "Clean accuracy, one exact run per image"
+        : Math.abs(drop).toFixed(1) + " points " + (drop >= 0 ? "below" : "above") + " its own clean " + (clean[model].acc * 100).toFixed(1) + "%";
+    });
+    $("#subDiff").textContent = Math.round(row.diff.conf * 100) + "% interval " + signed(row.diff.lo * 100) + " to " + signed(row.diff.hi * 100) + " points, resampling images";
+    $$(".stat[data-model]").forEach(el => el.classList.toggle("is-selected", el.dataset.model === S.model));
+    const e0 = row.sgd;
+    $("#source").textContent = (isTest ? "Held-out test set" : "Validation panel") + " · " + fmtInt(e0.images) + " images × " + runsPhrase(e0.chips, e0.reads) + " each";
+
+    // chart
+    $("#lgModel").textContent = S.model.toUpperCase();
+    drawChart();
+
+    // field
+    const f = D.field.runs[id][S.model];
+    for (let i = 0; i < tiles.length; i++) {
+      const k = +f.k[i];
+      tiles[i].style.backgroundColor = ramp(k / f.n);
+      tiles[i].title = D.classes[Math.floor(i / 50)] + ": right in " + k + " of " + plural(f.n, "run");
+    }
+    const vf = D.val[id][S.model];
+    $("#fieldNote").textContent = S.model.toUpperCase() + ", " + runsPhrase(vf.chips, vf.reads) + " per image. Within each row, SGD's clean confidence falls from left to right.";
+
+    // examples
+    const ex = D.examples.runs[id][S.model];
+    const n = ex.chips * ex.reads;
+    $("#exCount").textContent = S.model.toUpperCase() + " · " + runsPhrase(ex.chips, ex.reads) + " each" + (ex.src === "validation" && n > 1 ? ", validation sweep" : "");
+    cards.forEach((c, j) => {
+      const win = ex.win[j], truth = D.examples.labels[j], acc = win[truth];
+      c.img.style.borderColor = ramp(acc);
+      const unit = ex.chips > 1 ? "chips" : "runs";
+      c.acc.textContent = n === 1 ? (acc > 0.5 ? "right" : "wrong")
+        : n <= 8 ? "right in " + Math.round(acc * n) + " of " + n + " " + unit
+        : "right in " + Math.round(acc * 100) + "% of " + unit;
+      let top = win.map((w, k) => [w, k]).filter(([w, k]) => w > 0 || k === truth).sort((p, q) => q[0] - p[0]).slice(0, 3);
+      if (!top.some(([, k]) => k === truth)) top[top.length - 1] = [acc, truth];
+      c.rows.forEach((r, i) => {
+        const item = top[i];
+        [r.nm, r.bar, r.v].forEach(el => el.classList.toggle("empty", !item));
+        if (!item) { r.fill.style.width = "0%"; return; }
+        const [w, k] = item;
+        r.nm.textContent = D.classes[k];
+        r.nm.classList.toggle("is-true", k === truth);
+        r.fill.style.width = (w * 100).toFixed(1) + "%";
+        r.fill.style.backgroundColor = k === truth ? ramp(w) : "";
+        r.v.textContent = Math.round(w * 100) + "%";
+      });
+    });
+  }
+
+  let resizeRaf = 0;
+  new ResizeObserver(() => { cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(drawChart); }).observe($("#chartBox"));
+  render();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawChart);
+})();
+</script>
+<!--END PAGE-->
+</body>
+</html>

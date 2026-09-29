@@ -1,0 +1,16 @@
+{
+  "method": "sam",
+  "sam_rho": 0.05,
+  "seed": 1729,
+  "data_root": "data",
+  "metadata_path": "artifacts/data/data_metadata.json",
+  "output_dir": "artifacts/training/sam",
+  "epochs": 150,
+  "batch_size": 128,
+  "learning_rate": 0.1,
+  "momentum": 0.9,
+  "weight_decay": 0.0005,
+  "warmup_epochs": 5,
+  "num_workers": 0,
+  "device": "auto"
+}
